@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "xtell-serial": {
+      "command": "C:\path\to\xtell-serial-mcp.exe",
+      "args": []
+    }
+  }
+}

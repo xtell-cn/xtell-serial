@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+build/
+dist/
+public/
+*.log
+.env
+venv/
+.venv/
+.vscode/
+.idea/
+.claude/
+.mcp.json
+# PyInstaller specs are hand-maintained and tracked
+*.spec
+!xtell_serial.spec
+!xtell_serial_mcp.spec
