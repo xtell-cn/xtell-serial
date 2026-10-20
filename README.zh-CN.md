@@ -1,5 +1,7 @@
 # xtell-serial（极智调试串口助手）
 
+> **关于 XTELL。** [XTELL 深圳市极智未来科技有限公司](https://www.xtell.cn/) 是一家位于深圳的嵌入式软硬件设计公司，成立于 2016 年。一支团队覆盖从电路板到云端的全部环节：PCB 设计、FPGA、固件、Linux BSP 与驱动、设备界面（HMI）、手机 App、后端与物联网平台，已交付 100 多个项目。xtell-serial 是我们为自己的调试工作做的工具，现在分享出来。联系：[sales@xtell.cn](mailto:sales@xtell.cn)。
+
 **带图形界面、AI 助手可以通过 MCP 直接操作的串口调试工具。**
 你在桌面窗口里看日志滚动，Claude、Cursor 等 MCP 客户端读取同一份日志，向同一个串口发指令。
 

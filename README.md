@@ -1,5 +1,7 @@
 # xtell-serial
 
+> **About XTELL.** [XTELL](https://www.xtell.cn/) (Shenzhen XTELL Future Technology Co., Ltd.) is an embedded hardware and software design house in Shenzhen, China, founded in 2016. One team covers every layer from circuit board to cloud: PCB design, FPGA, firmware, Linux BSP and drivers, device interfaces (HMI), mobile apps, backends and IoT platforms, with more than 100 projects delivered. We built xtell-serial for our own bench work and are sharing it. Contact: [sales@xtell.cn](mailto:sales@xtell.cn).
+
 **A serial terminal with a GUI that your AI assistant can drive through MCP.**
 You watch the log scroll in a normal desktop window; Claude, Cursor or any MCP client reads the same log and sends commands to the same port.
 
