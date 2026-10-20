@@ -1,0 +1,23 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.xtell-cn/xtell-serial",
+  "title": "XTELL Serial",
+  "description": "Serial terminal with a GUI that AI assistants drive over MCP: read device logs, send commands.",
+  "repository": {
+    "url": "https://github.com/xtell-cn/xtell-serial",
+    "source": "github"
+  },
+  "websiteUrl": "https://www.xtell.cn/blog/ai-assisted-embedded-debugging-serial-mcp",
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/xtell-cn/xtell-serial/releases/download/v0.1.0/xtell-serial-0.1.0.mcpb",
+      "version": "0.1.0",
+      "fileSha256": "da99d66471b8d93de63c0a06ee985c4689fef4693a199be9a0d22486c470e45e",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

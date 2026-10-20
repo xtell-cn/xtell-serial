@@ -15,3 +15,5 @@ venv/
 *.spec
 !xtell_serial.spec
 !xtell_serial_mcp.spec
+
+release/
