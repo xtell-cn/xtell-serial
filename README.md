@@ -8,8 +8,6 @@
 You watch the log scroll in a normal desktop window; Claude, Cursor or any MCP client reads the same log and sends commands to the same port.
 
 > Status: **early preview (v0.1)**. Windows only for now. The full MCP setup guide and tool reference is in [docs/MCP_SETUP.md](docs/MCP_SETUP.md) (also available in [Chinese](docs/MCP_SETUP.zh-CN.md)).
->
-> Known issue: the window may freeze when the serial port is suddenly hit with a large burst of dense data. A fix is planned.
 
 [中文说明](README.zh-CN.md)
 
