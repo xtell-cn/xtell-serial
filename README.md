@@ -3,7 +3,7 @@
 **A serial terminal with a GUI that your AI assistant can drive through MCP.**
 You watch the log scroll in a normal desktop window; Claude, Cursor or any MCP client reads the same log and sends commands to the same port.
 
-> Status: **early preview (v0.1)**. Windows only for now. English documentation is a work in progress; the full MCP tool reference is in [docs/MCP_SETUP.zh-CN.md](docs/MCP_SETUP.zh-CN.md) (Chinese).
+> Status: **early preview (v0.1)**. Windows only for now. The full MCP setup guide and tool reference is in [docs/MCP_SETUP.md](docs/MCP_SETUP.md) (also available in [Chinese](docs/MCP_SETUP.zh-CN.md)).
 >
 > Known issue: the window may freeze when the serial port is suddenly hit with a large burst of dense data. A fix is planned.
 
@@ -55,6 +55,8 @@ For Claude Desktop, Cursor and others, add this to the client's MCP configuratio
   }
 }
 ```
+
+The full tool reference is in [docs/MCP_SETUP.md](docs/MCP_SETUP.md).
 
 Then ask your assistant something like: *"Connect to COM3 at 115200, send `AT+GMR`, and tell me what version the module reports."*
 
