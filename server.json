@@ -8,13 +8,13 @@
     "source": "github"
   },
   "websiteUrl": "https://www.xtell.cn/blog/ai-assisted-embedded-debugging-serial-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "packages": [
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/xtell-cn/xtell-serial/releases/download/v0.1.0/xtell-serial-0.1.0.mcpb",
-      "version": "0.1.0",
-      "fileSha256": "da99d66471b8d93de63c0a06ee985c4689fef4693a199be9a0d22486c470e45e",
+      "identifier": "https://github.com/xtell-cn/xtell-serial/releases/download/v0.1.1/xtell-serial-0.1.1.mcpb",
+      "version": "0.1.1",
+      "fileSha256": "7a2e5689c85bbde331a811d22dbd41e63a616f94c192b1617369543a636067a5",
       "transport": {
         "type": "stdio"
       }
