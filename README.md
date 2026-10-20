@@ -2,11 +2,7 @@
 
 > **About XTELL** ([www.xtell.cn](https://www.xtell.cn/))
 >
-> Shenzhen XTELL Future Technology delivers cutting-edge embedded software & hardware development, AI algorithms, IoT solutions, and mobile internet technology for the future.
->
-> Shenzhen XTELL Future Technology delivers true full-stack development - from software, circuit design, mold development to mass production. We transform your ideas into reality.
->
-> Professionally providing full lifecycle services from concept design to mass production delivery, helping clients quickly achieve product marketization and commercial success through deep hardware-software collaboration and cutting-edge technology applications.
+> Shenzhen XTELL Future Technology delivers true full-stack development: software, circuit design, mold development and mass production, all from one team. Our work spans embedded software and hardware, AI algorithms, IoT solutions and mobile internet technology. We provide the full lifecycle from concept design to mass-production delivery, and the close collaboration between hardware and software helps clients bring products to market quickly and succeed commercially.
 
 **A serial terminal with a GUI that your AI assistant can drive through MCP.**
 You watch the log scroll in a normal desktop window; Claude, Cursor or any MCP client reads the same log and sends commands to the same port.
