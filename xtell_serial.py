@@ -448,6 +448,9 @@ class SerialReceiver:
         file_menu.add_separator()
         file_menu.add_command(label=tr("退出"), command=self._quit_app)
         menubar.add_cascade(label=tr("文件"), menu=file_menu)
+        # language switch: shows the language you will switch TO
+        menubar.add_command(label=self._lang_menu_text(), command=self._toggle_language)
+        self.menubar = menubar
         self.root.config(menu=menubar)
         self.file_menu = file_menu  # 保存引用以便更新菜单状态
         
@@ -485,10 +488,6 @@ class SerialReceiver:
                                           foreground="blue", cursor="hand2", font=("Microsoft YaHei", 10, "bold"))
         self.custom_name_label.pack(side=tk.RIGHT, padx=10)
         self.custom_name_label.bind("<Button-1>", self._set_custom_name)
-
-        # language switch (shows the language you will switch TO)
-        self.lang_btn = ttk.Button(top_frame, text=self._lang_btn_text(), width=6, command=self._toggle_language)
-        self.lang_btn.pack(side=tk.RIGHT, padx=5)
 
         # ===== 选项栏 =====
         option_frame = ttk.Frame(self.root)
@@ -705,8 +704,8 @@ class SerialReceiver:
     # ===== language =====
 
     @staticmethod
-    def _lang_btn_text():
-        return "English" if i18n.get_lang() == "zh" else "中文"
+    def _lang_menu_text():
+        return "ENG" if i18n.get_lang() == "zh" else "中文"
 
     def _set_status(self, template, color, **kw):
         """Show a status line and remember it so it can be re-rendered on language change."""
@@ -748,7 +747,7 @@ class SerialReceiver:
                 relabel(child)
 
         relabel(self.root)
-        self.lang_btn.config(text=self._lang_btn_text())
+        self.menubar.entryconfigure(self.menubar.index("end"), label=self._lang_menu_text())
         self.custom_name_var.set(conv(self.custom_name_var.get()))
         title = tr("极智调试串口")
         self.root.title(f"{title} - {self.instance_name}" if self.instance_name else title)

@@ -14,7 +14,7 @@ You watch the log scroll in a normal desktop window; Claude, Cursor or any MCP c
 - A full serial terminal: baud rates up to 10 Mbaud, UTF-8 / GBK / GB2312 / ASCII, HEX view and send, timestamps, line numbers.
 - Live filtering by substring or regular expression, with highlighting and a separate filtered view.
 - Repeat-send, send history, save-to-file with append mode, a 100,000-line buffer with a usage bar.
-- English and Chinese user interface: press the language button at the top right of the window to switch; the choice is remembered (the first run follows the Windows display language).
+- English and Chinese user interface: use the language item in the menu bar, next to File (ENG / 中文), to switch; the choice is remembered (the first run follows the Windows display language).
 - Several windows at once, each with its own name, for bench setups with more than one board. The first window acts as a local hub; if it closes, another one takes over.
 - An MCP server (`xtell-serial-mcp`) that exposes 14 tools to AI clients: list ports, connect, send, auto-send, read received / sent / filtered data (with optional time ranges), set a filter, save to file, clear buffers, check buffer status.
 
