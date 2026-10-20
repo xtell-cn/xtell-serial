@@ -5,7 +5,7 @@ You watch the log scroll in a normal desktop window; Claude, Cursor or any MCP c
 
 > Status: **early preview (v0.1)**. Windows only for now. English documentation is a work in progress; the full MCP tool reference is in [docs/MCP_SETUP.zh-CN.md](docs/MCP_SETUP.zh-CN.md) (Chinese).
 >
-> Known issue: the window can freeze when a device sends data at very high rates (for example at 2 Mbaud). A fix is planned.
+> Known issue: the window may freeze when the serial port is suddenly hit with a large burst of dense data. A fix is planned.
 
 [中文说明](README.zh-CN.md)
 
