@@ -3,9 +3,9 @@
 **A serial terminal with a GUI that your AI assistant can drive through MCP.**
 You watch the log scroll in a normal desktop window; Claude, Cursor or any MCP client reads the same log and sends commands to the same port.
 
-> Status: **early, private preview (v0.1)**. Windows only for now. English documentation is a work in progress; the full MCP tool reference is in [docs/MCP_SETUP.zh-CN.md](docs/MCP_SETUP.zh-CN.md) (Chinese).
+> Status: **early preview (v0.1)**. Windows only for now. English documentation is a work in progress; the full MCP tool reference is in [docs/MCP_SETUP.zh-CN.md](docs/MCP_SETUP.zh-CN.md) (Chinese).
 >
-> Known issue: the window can freeze when a device sends data at very high rates (for example at 2 Mbaud). A fix is planned before any public release.
+> Known issue: the window can freeze when a device sends data at very high rates (for example at 2 Mbaud). A fix is planned.
 
 [中文说明](README.zh-CN.md)
 
