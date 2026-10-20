@@ -11,6 +11,10 @@
 
 [English](README.md)
 
+![xtell-serial 主窗口：带时间戳的日志，过滤关键词 ERR 被高亮](https://raw.githubusercontent.com/xtell-cn/xtell-serial/main/docs/images/serial-main-window.zh.png)
+
+*上方是日志，过滤条件（这里是 ERR）高亮匹配内容并列在下方。日志为演示数据。*
+
 ## 功能
 
 - 完整的串口助手：波特率最高 10Mbps，支持 utf-8 / gbk / gb2312 / ascii，HEX 显示与发送，时间戳与行号。
@@ -21,6 +25,12 @@
 - MCP 服务端 `xtell-serial-mcp`，向 AI 客户端提供 14 个工具：列串口、连接、发送、定时发送、读取接收/发送/过滤数据（可按时间范围）、设置过滤、保存文件、清空缓冲、查询缓冲状态。
 
 GUI 与 MCP 服务端通过本机 TCP Hub（`127.0.0.1:50016`，可用环境变量 `XTELL_SERIAL_HUB_PORT` 修改）通信，不监听公网接口。
+
+## 更多截图
+
+![突发 18500 行数据：窗口仍然响应，并提示有多少行未绘制](https://raw.githubusercontent.com/xtell-cn/xtell-serial/main/docs/images/serial-burst.zh.png)
+
+![两个已命名的窗口并排，每个对应一个设备](https://raw.githubusercontent.com/xtell-cn/xtell-serial/main/docs/images/serial-two-windows.zh.png)
 
 ## 从源码运行
 

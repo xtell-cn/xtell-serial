@@ -11,6 +11,10 @@ You watch the log scroll in a normal desktop window; Claude, Cursor or any MCP c
 
 [中文说明](README.zh-CN.md)
 
+![xtell-serial main window: a timestamped log with the filter keyword ERR highlighted](https://raw.githubusercontent.com/xtell-cn/xtell-serial/main/docs/images/serial-main-window.en.png)
+
+*The log in the upper pane, the filter (here ERR) highlighting matches and listing them below. The log is demo data.*
+
 ## What it is
 
 - A full serial terminal: baud rates up to 10 Mbaud, UTF-8 / GBK / GB2312 / ASCII, HEX view and send, timestamps, line numbers.
@@ -21,6 +25,12 @@ You watch the log scroll in a normal desktop window; Claude, Cursor or any MCP c
 - An MCP server (`xtell-serial-mcp`) that exposes 14 tools to AI clients: list ports, connect, send, auto-send, read received / sent / filtered data (with optional time ranges), set a filter, save to file, clear buffers, check buffer status.
 
 The GUI and the MCP server talk over a local TCP hub on `127.0.0.1:50016` (override with `XTELL_SERIAL_HUB_PORT`). Nothing listens on a public interface.
+
+## More screenshots
+
+![A burst of 18,500 lines: the window stays responsive and says how many lines were not drawn](https://raw.githubusercontent.com/xtell-cn/xtell-serial/main/docs/images/serial-burst.en.png)
+
+![Two named windows side by side, one per device](https://raw.githubusercontent.com/xtell-cn/xtell-serial/main/docs/images/serial-two-windows.en.png)
 
 ## Run from source
 
