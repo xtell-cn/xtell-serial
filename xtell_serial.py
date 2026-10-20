@@ -18,6 +18,7 @@ import pystray
 import ctypes
 import queue
 import collections
+import webbrowser
 from abc import ABC, abstractmethod
 
 import hub_server
@@ -122,6 +123,14 @@ def get_icon_path(size):
     else:
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, f"icon_{size}.png")
+
+SITE_URL = "https://www.xtell.cn/"
+
+
+def site_url(where):
+    """The website address with a source tag, so visits that start in this program can be told apart."""
+    return f"{SITE_URL}?utm_source=xtell-serial&utm_medium=app&utm_content={where}"
+
 
 class ToolTip:
     """简单的鼠标悬停提示"""
@@ -486,10 +495,18 @@ class SerialReceiver:
         
         # 自定义实例名称（靠右）
         self.custom_name_var = tk.StringVar(value=tr("[点击设置名称]"))
-        self.custom_name_label = tk.Label(top_frame, textvariable=self.custom_name_var, 
+        name_box = tk.Frame(top_frame)
+        name_box.pack(side=tk.RIGHT, padx=10)
+        self.custom_name_label = tk.Label(name_box, textvariable=self.custom_name_var,
                                           foreground="blue", cursor="hand2", font=("Microsoft YaHei", 10, "bold"))
-        self.custom_name_label.pack(side=tk.RIGHT, padx=10)
+        self.custom_name_label.pack(anchor="e")
         self.custom_name_label.bind("<Button-1>", self._set_custom_name)
+        # 公司网址：在名称下方，点击用浏览器打开
+        self.site_link = tk.Label(name_box, text="www.xtell.cn", foreground="blue", cursor="hand2",
+                                  font=("Consolas", 9, "underline"))
+        self.site_link.pack(anchor="e")
+        self.site_link.bind("<Button-1>", lambda e: webbrowser.open(site_url("window")))
+        ToolTip(self.site_link, tr("访问 XTELL 官网"))
 
         # ===== 选项栏 =====
         option_frame = ttk.Frame(self.root)
@@ -778,6 +795,7 @@ class SerialReceiver:
         self._fit_button_widths()
         self.menubar.entryconfigure(self.menubar.index("end"), label=self._lang_menu_text())
         self.custom_name_var.set(conv(self.custom_name_var.get()))
+        self.site_link._tooltip.text = tr("访问 XTELL 官网")
         title = tr("极智调试串口")
         self.root.title(f"{title} - {self.instance_name}" if self.instance_name else title)
         template, color, kw = self._status
@@ -1257,7 +1275,6 @@ class SerialReceiver:
 
     def _show_about(self):
         """显示关于对话框"""
-        import webbrowser
         about_win = tk.Toplevel(self.root)
         about_win.title(tr("关于"))
         about_win.geometry("400x320")
@@ -1307,7 +1324,7 @@ class SerialReceiver:
         
         link = ttk.Label(about_win, text="https://www.xtell.cn/", foreground="blue", cursor="hand2", font=("Consolas", 10))
         link.pack(pady=2)
-        link.bind("<Button-1>", lambda e: webbrowser.open("https://www.xtell.cn/"))
+        link.bind("<Button-1>", lambda e: webbrowser.open(site_url("about")))
         
         ttk.Button(about_win, text=tr("确定"), command=about_win.destroy).pack(pady=10)
     

@@ -97,6 +97,7 @@ EN = {
     "• 毫秒级时间戳与百万级行缓冲区": "• Millisecond timestamps, large line buffer",
     "深圳市极智未来科技有限公司": "Shenzhen XTELL Future Technology Co., Ltd.",
     "确定": "OK",
+    "访问 XTELL 官网": "Visit the XTELL website",
     # tray / context menu
     "显示窗口": "Show window",
     "XTELL Serial 串口助手": "XTELL Serial",
