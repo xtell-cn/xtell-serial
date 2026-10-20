@@ -39,7 +39,7 @@ try:
 except Exception:
     pass
 
-APP_VERSION = "Build 7"
+APP_VERSION = "v0.1.1"
 DEFAULT_MAX_LINES = 100000
 
 # ═══════════════════════════════════════════════════════════════════════════
