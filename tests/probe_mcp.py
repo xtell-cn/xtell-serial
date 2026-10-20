@@ -182,7 +182,7 @@ def main():
         record("list_serial_ports 有结果", bool(text), (text or "")[:60])
         if not running:
             record("T1 无 Hub 时给出可读提示",
-                   text is not None and "请先打开 xtell-serial" in text, (text or "")[:60])
+                   text is not None and "open the xtell-serial program" in text, (text or "")[:60])
 
         print("\nT6 双适配器并发")
         c2 = Client()
@@ -197,30 +197,30 @@ def main():
         if args.fake and running:
             print(f"\nT3/T7 全链路 (假 GUI, 串口 {args.port})")
             t = c.tool("send_serial_data", {"port": args.port, "data": "AT\r\n"})
-            record("send_serial_data 命中已注册窗口", bool(t) and "已发送" in t, (t or "")[:80])
+            record("send_serial_data 命中已注册窗口", bool(t) and "Sent" in t, (t or "")[:80])
             t = c.tool("send_serial_data", {"port": args.port.lower(), "data": "AT\r\n"})
-            record("端口名大小写容错", bool(t) and "已发送" in t, (t or "")[:80])
+            record("端口名大小写容错", bool(t) and "Sent" in t, (t or "")[:80])
             t = c.tool("send_serial_data", {"port": args.port, "data": "   "})
             record("空内容如实报错(不谎报成功)",
-                   bool(t) and "发送内容为空" in t, (t or "")[:80])
+                   bool(t) and "Nothing to send" in t, (t or "")[:80])
             t = c.tool("read_received_data", {"port": args.port, "lines_count": 5})
             record("read_received_data 跨连接回传", bool(t) and "fake main" in t, (t or "")[:60])
             t = c.tool("get_buffer_status", {"port": args.port})
-            record("get_buffer_status 回报缓存状态", bool(t) and "缓存状态" in t, (t or "")[:60])
+            record("get_buffer_status 回报缓存状态", bool(t) and "Buffer status" in t, (t or "")[:60])
             t = c.tool("read_sent_data", {"port": args.port, "lines_count": 5})
             record("read_sent_data 跨连接回传", bool(t) and "fake sent" in t, (t or "")[:60])
             t = c.tool("set_filter", {"port": args.port, "keyword": "ERR"})
-            record("set_filter", bool(t) and "已在" in t, (t or "")[:80])
+            record("set_filter", bool(t) and "Filter set" in t, (t or "")[:80])
             t = c.tool("send_serial_data", {"port": "COM_NOT_EXIST", "data": "x"})
             record("未知串口给出可读错误",
-                   bool(t) and "没有窗口在管理" in t, (t or "")[:80])
+                   bool(t) and "No window is managing" in t, (t or "")[:80])
             t = c.tool("connect_serial", {"port": "COM_NOT_EXIST", "baudrate": 115200})
             record("connect 到不存在的串口给出可读错误",
-                   bool(t) and "本机不存在串口" in t, (t or "")[:80])
+                   bool(t) and "does not exist on this computer" in t, (t or "")[:80])
         elif args.port and running:
             print(f"\nT3/T4/T7 真实串口链路 ({args.port} @ {args.baud})")
             t = c.tool("connect_serial", {"port": args.port, "baudrate": args.baud})
-            record("connect_serial 回报真实结果", bool(t) and "已连接" in t, (t or "")[:80])
+            record("connect_serial 回报真实结果", bool(t) and "Connected" in t, (t or "")[:80])
             print(f"    抓取 {args.capture}s 数据 ...")
             time.sleep(args.capture)
             t = c.tool("read_received_data", {"port": args.port, "lines_count": 20})
@@ -228,20 +228,20 @@ def main():
                      if l.strip() and "No matching data" not in l]
             record(f"read_received_data 抓到数据", len(lines) > 0, f"{len(lines)} 行" if lines else "该串口静默, 无数据")
             t = c.tool("set_filter", {"port": args.port, "keyword": args.filter})
-            record("set_filter", bool(t) and "已在" in t, (t or "")[:60])
+            record("set_filter", bool(t) and "Filter set" in t, (t or "")[:60])
             time.sleep(1.0)
             t = c.tool("read_filtered_data", {"port": args.port, "lines_count": 10})
             record("read_filtered_data 有返回", t is not None, (t or "").splitlines()[:1])
             t = c.tool("send_serial_data", {"port": args.port, "data": args.send})
-            record("send_serial_data 回报真实结果", bool(t) and "已发送" in t, (t or "")[:60])
+            record("send_serial_data 回报真实结果", bool(t) and "Sent" in t, (t or "")[:60])
             t = c.tool("send_serial_data", {"port": args.port, "data": "   "})
-            record("空内容发送如实报错(不谎报成功)", bool(t) and "发送内容为空" in t, (t or "")[:60])
+            record("空内容发送如实报错(不谎报成功)", bool(t) and "Nothing to send" in t, (t or "")[:60])
             time.sleep(1.0)
             t = c.tool("read_sent_data", {"port": args.port, "lines_count": 5})
             ok = bool(t) and args.send.strip() in t
             record("read_sent_data 能查到刚发的内容", ok, (t or "")[:60])
             t = c.tool("disconnect_serial", {"port": args.port})
-            record("disconnect_serial", bool(t) and "已断开" in t, (t or "")[:60])
+            record("disconnect_serial", bool(t) and "Disconnected" in t, (t or "")[:60])
         elif args.port:
             print("\n跳过 T3/T4/T7: Hub 未运行, 请先打开 xtell-serial")
         else:

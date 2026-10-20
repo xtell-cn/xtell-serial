@@ -62,24 +62,24 @@ def main():
                 data = msg.get("data", "")
                 if data.strip():
                     send({"cmd": "ack", "req_id": msg.get("req_id"), "ok": True,
-                          "text": f"已发送: {data.strip()}"})
+                          "text": f"Sent: {data.strip()}"})
                 else:
                     send({"cmd": "ack", "req_id": msg.get("req_id"), "ok": False,
-                          "text": "发送内容为空, 已忽略"})
+                          "text": "Nothing to send (empty data)"})
             elif msg.get("cmd") == "connect":
                 if args.slow_ack:
                     time.sleep(args.slow_ack)
                 send({"cmd": "status", "port": msg.get("port"), "state": "connected",
                       "name": args.name})
                 send({"cmd": "ack", "req_id": msg.get("req_id"), "ok": True,
-                      "text": f"已连接 {msg.get('port')} {msg.get('baudrate')}bps"})
+                      "text": f"Connected to {msg.get('port')} at {msg.get('baudrate')} bps"})
             elif msg.get("cmd") == "disconnect":
                 send({"cmd": "status", "port": "", "state": "idle", "name": args.name})
             elif msg.get("cmd") == "get_buffer_status":
                 if args.slow_ack:
                     time.sleep(args.slow_ack)
                 send({"cmd": "ack", "req_id": msg.get("req_id"), "ok": True,
-                      "text": "缓存状态: 已使用 2 行, 上限 100000 行, 剩余 99998 行 (占用: 0.00%)"})
+                      "text": "Buffer status: 2 lines used, limit 100000 lines, 99998 lines free (usage: 0.00%)"})
 
     threading.Thread(target=reader, daemon=True).start()
 

@@ -20,6 +20,8 @@ import queue
 from abc import ABC, abstractmethod
 
 import hub_server
+import i18n
+from i18n import tr, en
 
 def log_err(msg):
     try:
@@ -150,8 +152,11 @@ class ToolTip:
 
 class SerialReceiver:
     def __init__(self, root):
+        i18n.load_lang()
         self.root = root
-        self.root.title("极智调试串口")
+        self.root.title(tr("极智调试串口"))
+        self._status = ("状态: 未连接", "gray", {})
+        self.instance_name = ""
         self.root.geometry("900x750")
 
         self.connection: IConnection = None
@@ -287,10 +292,9 @@ class SerialReceiver:
 
         if cmd == "hello_ack":
             if msg.get("srv") != hub_server.SRV_TAG:
-                log_err(f"端口 {hub_server.HUB_PORT} 被无关程序占用: {msg}")
-                self.root.after(0, lambda: self.status_label.config(
-                    text=f"警告: 端口 {hub_server.HUB_PORT} 被其他程序占用, MCP 不可用",
-                    foreground="red"))
+                log_err(f"port {hub_server.HUB_PORT} is held by an unrelated program: {msg}")
+                self.root.after(0, lambda: self._set_status(
+                    "警告: 端口 {port} 被其他程序占用, MCP 不可用", "red", port=hub_server.HUB_PORT))
         elif cmd == "connect":
             port = msg.get("port")
             baudrate = msg.get("baudrate")
@@ -327,24 +331,24 @@ class SerialReceiver:
 
     def _mcp_do_send(self, data, hex_mode, req_id=None):
         if not self.running or not self.connection:
-            return self._hub_ack(req_id, False, "本窗口的连接未打开, 发送被丢弃")
+            return self._hub_ack(req_id, False, "This window's connection is not open; nothing was sent")
         if not (data or "").strip():
-            return self._hub_ack(req_id, False, "发送内容为空, 已忽略")
+            return self._hub_ack(req_id, False, "Nothing to send (empty data)")
         self.send_hex_var.set(hex_mode)
         self.send_text.delete(1.0, tk.END)
         self.send_text.insert(1.0, data)
         try:
             self._send_once(data.strip())
         except Exception as e:
-            return self._hub_ack(req_id, False, f"发送失败: {e}")
-        self._hub_ack(req_id, True, f"已发送: {data.strip()}")
+            return self._hub_ack(req_id, False, f"Send failed: {e}")
+        self._hub_ack(req_id, True, f"Sent: {data.strip()}")
 
     def _mcp_do_get_buffer_status(self, req_id=None):
         used = len(self.all_lines)
         max_l = self.max_lines
         rem = max(0, max_l - used)
         pct = f"{(used / max_l * 100):.2f}%" if max_l > 0 else "0%"
-        text = f"缓存状态: 已使用 {used} 行, 上限 {max_l} 行, 剩余 {rem} 行 (占用: {pct})"
+        text = f"Buffer status: {used} lines used, limit {max_l} lines, {rem} lines free (usage: {pct})"
         self._hub_ack(req_id, True, text)
 
     def _mcp_do_auto_send(self, msg):
@@ -378,9 +382,9 @@ class SerialReceiver:
             try:
                 self.save_file_handle = open(filepath, 'a', encoding='utf-8')
                 self.save_filepath = filepath
-                self.file_menu.entryconfigure(0, label="更换文件")
+                self.file_menu.entryconfigure(0, label=tr("更换文件"))
                 self.file_menu.entryconfigure(1, state=tk.NORMAL)
-                self.status_label.config(text=f"MCP 后台保存中: {filepath}", foreground="blue")
+                self._set_status("MCP 后台保存中: {path}", "blue", path=filepath)
             except Exception:
                 pass
         else:
@@ -437,13 +441,13 @@ class SerialReceiver:
         # ===== 菜单栏 =====
         menubar = tk.Menu(self.root)
         file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label="保存文件", command=self.save_to_file)
-        file_menu.add_command(label="停止保存", command=self.stop_save, state=tk.DISABLED)
+        file_menu.add_command(label=tr("保存文件"), command=self.save_to_file)
+        file_menu.add_command(label=tr("停止保存"), command=self.stop_save, state=tk.DISABLED)
         file_menu.add_separator()
-        file_menu.add_command(label="关于", command=self._show_about)
+        file_menu.add_command(label=tr("关于"), command=self._show_about)
         file_menu.add_separator()
-        file_menu.add_command(label="退出", command=self._真正退出)
-        menubar.add_cascade(label="文件", menu=file_menu)
+        file_menu.add_command(label=tr("退出"), command=self._quit_app)
+        menubar.add_cascade(label=tr("文件"), menu=file_menu)
         self.root.config(menu=menubar)
         self.file_menu = file_menu  # 保存引用以便更新菜单状态
         
@@ -455,59 +459,63 @@ class SerialReceiver:
         self.serial_frame = ttk.Frame(top_frame)
         self.serial_frame.pack(side=tk.LEFT, padx=5)
 
-        ttk.Label(self.serial_frame, text="串口:").pack(side=tk.LEFT)
+        ttk.Label(self.serial_frame, text=tr("串口:")).pack(side=tk.LEFT)
         self.port_combo = ttk.Combobox(self.serial_frame, width=25, state="readonly", postcommand=self.refresh_ports)
         self.port_combo.pack(side=tk.LEFT, padx=5)
         self.refresh_ports()
 
-        ttk.Button(self.serial_frame, text="刷新", command=self.refresh_ports).pack(side=tk.LEFT)
+        ttk.Button(self.serial_frame, text=tr("刷新"), command=self.refresh_ports).pack(side=tk.LEFT)
 
-        ttk.Label(self.serial_frame, text="波特率:").pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Label(self.serial_frame, text=tr("波特率:")).pack(side=tk.LEFT, padx=(10, 0))
         self.baud_combo = ttk.Combobox(self.serial_frame, width=10, values=["4800", "9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600", "1000000", "2000000"])
         self.baud_combo.set("115200")
         self.baud_combo.pack(side=tk.LEFT, padx=5)
 
-        ttk.Label(self.serial_frame, text="编码:").pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Label(self.serial_frame, text=tr("编码:")).pack(side=tk.LEFT, padx=(10, 0))
         self.encoding_combo = ttk.Combobox(self.serial_frame, width=8, values=["utf-8", "gbk", "gb2312", "ascii"])
         self.encoding_combo.set("utf-8")
         self.encoding_combo.pack(side=tk.LEFT, padx=5)
 
-        self.open_btn = ttk.Button(top_frame, text="打开连接", command=self.toggle_connection)
+        self.open_btn = ttk.Button(top_frame, text=tr("打开连接"), command=self.toggle_connection)
         self.open_btn.pack(side=tk.LEFT, padx=10)
         
         # 自定义实例名称（靠右）
-        self.custom_name_var = tk.StringVar(value="[点击设置名称]")
+        self.custom_name_var = tk.StringVar(value=tr("[点击设置名称]"))
         self.custom_name_label = tk.Label(top_frame, textvariable=self.custom_name_var, 
                                           foreground="blue", cursor="hand2", font=("Microsoft YaHei", 10, "bold"))
         self.custom_name_label.pack(side=tk.RIGHT, padx=10)
         self.custom_name_label.bind("<Button-1>", self._set_custom_name)
+
+        # language switch (shows the language you will switch TO)
+        self.lang_btn = ttk.Button(top_frame, text=self._lang_btn_text(), width=6, command=self._toggle_language)
+        self.lang_btn.pack(side=tk.RIGHT, padx=5)
 
         # ===== 选项栏 =====
         option_frame = ttk.Frame(self.root)
         option_frame.pack(fill=tk.X, padx=10, pady=2)
         
         self.show_line_number_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(option_frame, text="行号", variable=self.show_line_number_var, command=self.refresh_all_display).pack(side=tk.LEFT)
+        ttk.Checkbutton(option_frame, text=tr("行号"), variable=self.show_line_number_var, command=self.refresh_all_display).pack(side=tk.LEFT)
         
         self.show_timestamp_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(option_frame, text="时间戳", variable=self.show_timestamp_var, command=self.refresh_all_display).pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Checkbutton(option_frame, text=tr("时间戳"), variable=self.show_timestamp_var, command=self.refresh_all_display).pack(side=tk.LEFT, padx=(10, 0))
         
         self.show_hex_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(option_frame, text="HEX显示", variable=self.show_hex_var, command=self.refresh_all_display).pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Checkbutton(option_frame, text=tr("HEX显示"), variable=self.show_hex_var, command=self.refresh_all_display).pack(side=tk.LEFT, padx=(10, 0))
         
         ttk.Separator(option_frame, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
         
-        ttk.Label(option_frame, text="缓冲区最大行数:").pack(side=tk.LEFT)
+        ttk.Label(option_frame, text=tr("缓冲区最大行数:")).pack(side=tk.LEFT)
         self.max_lines_var = tk.StringVar(value=str(DEFAULT_MAX_LINES))
         max_lines_entry = ttk.Entry(option_frame, width=8, textvariable=self.max_lines_var)
         max_lines_entry.pack(side=tk.LEFT, padx=5)
         max_lines_entry.bind("<Return>", self._on_max_lines_changed)
         max_lines_entry.bind("<FocusOut>", self._on_max_lines_changed)
         
-        ttk.Label(option_frame, text="  使用:").pack(side=tk.LEFT)
+        ttk.Label(option_frame, text=tr("  使用:")).pack(side=tk.LEFT)
         self.buffer_bar = ttk.Progressbar(option_frame, length=120, mode='determinate', maximum=100)
         self.buffer_bar.pack(side=tk.LEFT, padx=3)
-        self.buffer_usage_label = ttk.Label(option_frame, text="0/10000 (0%)")
+        self.buffer_usage_label = ttk.Label(option_frame, text=f"0/{DEFAULT_MAX_LINES} (0%)")
         self.buffer_usage_label.pack(side=tk.LEFT)
         
         # ===== 双窗格显示区 =====
@@ -515,13 +523,13 @@ class SerialReceiver:
         self.paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
         # 上方：接收数据
-        main_frame = ttk.LabelFrame(self.paned, text="接收数据")
+        main_frame = ttk.LabelFrame(self.paned, text=tr("接收数据"))
         # 小工具栏
         main_toolbar = ttk.Frame(main_frame)
         main_toolbar.pack(fill=tk.X, padx=2, pady=(2, 0))
-        self.main_pause_btn = ttk.Button(main_toolbar, text="暂停滚动", width=8, command=self._toggle_pause_main)
+        self.main_pause_btn = ttk.Button(main_toolbar, text=tr("暂停滚动"), width=8, command=self._toggle_pause_main)
         self.main_pause_btn.pack(side=tk.RIGHT, padx=2)
-        ttk.Button(main_toolbar, text="清空接收", width=8, command=self._clear_main).pack(side=tk.RIGHT, padx=2)
+        ttk.Button(main_toolbar, text=tr("清空接收"), width=8, command=self._clear_main).pack(side=tk.RIGHT, padx=2)
         self.main_text = scrolledtext.ScrolledText(main_frame, wrap=tk.WORD, font=("Consolas", 10), exportselection=False)
         self.main_text.pack(fill=tk.BOTH, expand=True)
         self._add_text_context_menu(self.main_text)
@@ -541,7 +549,7 @@ class SerialReceiver:
         filter_ctrl = ttk.Frame(filter_tab)
         filter_ctrl.pack(fill=tk.X, padx=3, pady=3)
         
-        ttk.Label(filter_ctrl, text="关键词:").pack(side=tk.LEFT)
+        ttk.Label(filter_ctrl, text=tr("关键词:")).pack(side=tk.LEFT)
         self.filter_entry = ttk.Combobox(filter_ctrl, width=23)
         self.filter_entry['values'] = []
         self.filter_entry.pack(side=tk.LEFT, padx=3)
@@ -550,10 +558,10 @@ class SerialReceiver:
         self.filter_entry.bind("<FocusOut>", self.on_filter_focus_out)
         
         self.filter_mode_var = tk.StringVar(value="string")
-        ttk.Radiobutton(filter_ctrl, text="字符串", variable=self.filter_mode_var, value="string", command=self.on_filter_changed).pack(side=tk.LEFT)
-        ttk.Radiobutton(filter_ctrl, text="正则", variable=self.filter_mode_var, value="regex", command=self.on_filter_changed).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Radiobutton(filter_ctrl, text=tr("字符串"), variable=self.filter_mode_var, value="string", command=self.on_filter_changed).pack(side=tk.LEFT)
+        ttk.Radiobutton(filter_ctrl, text=tr("正则"), variable=self.filter_mode_var, value="regex", command=self.on_filter_changed).pack(side=tk.LEFT, padx=(0, 5))
         
-        ttk.Label(filter_ctrl, text="匹配:").pack(side=tk.LEFT)
+        ttk.Label(filter_ctrl, text=tr("匹配:")).pack(side=tk.LEFT)
         self.filter_count_label = ttk.Label(filter_ctrl, text="0")
         self.filter_count_label.pack(side=tk.LEFT)
         
@@ -561,9 +569,9 @@ class SerialReceiver:
         self.regex_error_label.pack(side=tk.LEFT, padx=5)
         
         # 过滤窗口小工具栏
-        self.filter_pause_btn = ttk.Button(filter_ctrl, text="暂停滚动", width=8, command=self._toggle_pause_filter)
+        self.filter_pause_btn = ttk.Button(filter_ctrl, text=tr("暂停滚动"), width=8, command=self._toggle_pause_filter)
         self.filter_pause_btn.pack(side=tk.RIGHT, padx=2)
-        ttk.Button(filter_ctrl, text="清空过滤", width=8, command=self._clear_filter).pack(side=tk.RIGHT, padx=2)
+        ttk.Button(filter_ctrl, text=tr("清空过滤"), width=8, command=self._clear_filter).pack(side=tk.RIGHT, padx=2)
         
         # 过滤结果文本区
         self.filter_text = scrolledtext.ScrolledText(filter_tab, wrap=tk.WORD, font=("Consolas", 10), exportselection=False)
@@ -573,12 +581,12 @@ class SerialReceiver:
         self.filter_text.tag_config("highlight", background="yellow", foreground="red")
         self.filter_text.tag_config("timestamp", foreground="#6688aa", font=("Consolas", 9, "italic"))
         self.filter_text.bind("<Double-1>", self._on_filter_double_click)
-        bottom_notebook.add(filter_tab, text="过滤结果")
+        bottom_notebook.add(filter_tab, text=tr("过滤结果"))
         
         # --- Tab2: 发送数据 ---
         send_tab = ttk.Frame(bottom_notebook)
         self._setup_send_panel(send_tab)
-        bottom_notebook.add(send_tab, text="发送数据")
+        bottom_notebook.add(send_tab, text=tr("发送数据"))
         
         self.paned.add(bottom_notebook, weight=2)
         
@@ -586,10 +594,10 @@ class SerialReceiver:
         status_frame = ttk.Frame(self.root)
         status_frame.pack(fill=tk.X, padx=10, pady=5)
         
-        self.status_label = ttk.Label(status_frame, text="状态: 未连接", foreground="gray")
+        self.status_label = ttk.Label(status_frame, text=tr("状态: 未连接"), foreground="gray")
         self.status_label.pack(side=tk.LEFT)
         
-        ttk.Label(status_frame, text="  总行数:").pack(side=tk.RIGHT)
+        ttk.Label(status_frame, text=tr("  总行数:")).pack(side=tk.RIGHT)
         self.line_count_label = ttk.Label(status_frame, text="0")
         self.line_count_label.pack(side=tk.RIGHT)
     
@@ -606,38 +614,38 @@ class SerialReceiver:
         send_ctrl = ttk.Frame(parent)
         send_ctrl.pack(fill=tk.X, padx=3, pady=2)
         
-        self.send_btn = ttk.Button(send_ctrl, text="发送", command=self.send_data, width=8)
+        self.send_btn = ttk.Button(send_ctrl, text=tr("发送"), command=self.send_data, width=8)
         self.send_btn.pack(side=tk.LEFT, padx=3)
         
         self.send_hex_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(send_ctrl, text="HEX", variable=self.send_hex_var).pack(side=tk.LEFT, padx=3)
         
-        ttk.Label(send_ctrl, text="行尾:").pack(side=tk.LEFT)
+        ttk.Label(send_ctrl, text=tr("行尾:")).pack(side=tk.LEFT)
         self.line_ending_var = tk.StringVar(value="\\r\\n")
-        le_combo = ttk.Combobox(send_ctrl, width=5, textvariable=self.line_ending_var,
-                                values=["\\r\\n", "\\n", "\\r", "无"], state="readonly")
+        self.le_combo = le_combo = ttk.Combobox(send_ctrl, width=5, textvariable=self.line_ending_var,
+                                values=["\\r\\n", "\\n", "\\r", tr("无")], state="readonly")
         le_combo.pack(side=tk.LEFT, padx=2)
         
         ttk.Separator(send_ctrl, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=5)
         
-        self.repeat_btn = ttk.Button(send_ctrl, text="重复", command=self._toggle_repeat_send, width=6)
+        self.repeat_btn = ttk.Button(send_ctrl, text=tr("重复"), command=self._toggle_repeat_send, width=6)
         self.repeat_btn.pack(side=tk.LEFT, padx=2)
         
         self.repeat_interval_var = tk.StringVar(value="1000")
         ttk.Entry(send_ctrl, width=5, textvariable=self.repeat_interval_var).pack(side=tk.LEFT)
         ttk.Label(send_ctrl, text="ms").pack(side=tk.LEFT)
         
-        ttk.Label(send_ctrl, text="  已发:").pack(side=tk.LEFT)
+        ttk.Label(send_ctrl, text=tr("  已发:")).pack(side=tk.LEFT)
         self.send_count_label = ttk.Label(send_ctrl, text="0")
         self.send_count_label.pack(side=tk.LEFT)
         
         # --- 发送历史 ---
         hist_toolbar = ttk.Frame(parent)
         hist_toolbar.pack(fill=tk.X, padx=3)
-        ttk.Label(hist_toolbar, text="发送历史").pack(side=tk.LEFT)
-        self.hist_pause_btn = ttk.Button(hist_toolbar, text="暂停滚动", width=8, command=self._toggle_pause_send_history)
+        ttk.Label(hist_toolbar, text=tr("发送历史")).pack(side=tk.LEFT)
+        self.hist_pause_btn = ttk.Button(hist_toolbar, text=tr("暂停滚动"), width=8, command=self._toggle_pause_send_history)
         self.hist_pause_btn.pack(side=tk.RIGHT, padx=2)
-        ttk.Button(hist_toolbar, text="清空历史", width=8, command=self._clear_send_history).pack(side=tk.RIGHT, padx=2)
+        ttk.Button(hist_toolbar, text=tr("清空历史"), width=8, command=self._clear_send_history).pack(side=tk.RIGHT, padx=2)
         
         self.send_history = scrolledtext.ScrolledText(parent, wrap=tk.WORD, font=("Consolas", 9),
                                                       height=3, state=tk.DISABLED, exportselection=False)
@@ -675,35 +683,104 @@ class SerialReceiver:
     def _set_custom_name(self, event=None):
         from tkinter import simpledialog
         current = self.custom_name_var.get()
-        if current == "[点击设置名称]":
+        if current in ("[点击设置名称]", "[Click to set name]"):
             current = ""
-        new_name = simpledialog.askstring("设置名称", "请输入此窗口的自定义名称\n（用于区分多个串口助手实例）:", 
+        new_name = simpledialog.askstring(tr("设置名称"), tr("请输入此窗口的自定义名称\n（用于区分多个串口助手实例）:"),
                                           initialvalue=current, parent=self.root)
         if new_name is not None:
             if new_name.strip():
                 self.custom_name_var.set(new_name.strip())
-                self.root.title(f"极智调试串口 - {new_name.strip()}")
+                self.instance_name = new_name.strip()
+                self.root.title(f"{tr('极智调试串口')} - {new_name.strip()}")
                 self.custom_name_label.config(font=("Microsoft YaHei", 20, "bold"), foreground="green")
             else:
-                self.custom_name_var.set("[点击设置名称]")
-                self.root.title("极智调试串口")
+                self.custom_name_var.set(tr("[点击设置名称]"))
+                self.instance_name = ""
+                self.root.title(tr("极智调试串口"))
                 self.custom_name_label.config(font=("Microsoft YaHei", 10, "bold"), foreground="blue")
         # 名字更改后，上报给 Hub
         self._mcp_send_status()
+
+
+    # ===== language =====
+
+    @staticmethod
+    def _lang_btn_text():
+        return "English" if i18n.get_lang() == "zh" else "中文"
+
+    def _set_status(self, template, color, **kw):
+        """Show a status line and remember it so it can be re-rendered on language change."""
+        self._status = (template, color, kw)
+        self.status_label.config(text=tr(template, **kw), foreground=color)
+
+    def _toggle_language(self):
+        i18n.set_lang("en" if i18n.get_lang() == "zh" else "zh")
+        i18n.save_lang()
+        self._apply_language()
+
+    def _apply_language(self):
+        """Re-label every widget in the current language."""
+        conv = i18n.convert
+
+        def relabel(w):
+            if isinstance(w, tk.Menu):
+                end = w.index("end")
+                if end is not None:
+                    for i in range(end + 1):
+                        if w.type(i) in ("command", "cascade", "checkbutton", "radiobutton"):
+                            try:
+                                w.entryconfigure(i, label=conv(w.entrycget(i, "label")))
+                            except tk.TclError:
+                                pass
+            elif isinstance(w, ttk.Notebook):
+                for tab in w.tabs():
+                    w.tab(tab, text=conv(w.tab(tab, "text")))
+            else:
+                try:
+                    text = w.cget("text")
+                except tk.TclError:
+                    text = None
+                if text:
+                    new = conv(text)
+                    if new != text:
+                        w.configure(text=new)
+            for child in w.winfo_children():
+                relabel(child)
+
+        relabel(self.root)
+        self.lang_btn.config(text=self._lang_btn_text())
+        self.custom_name_var.set(conv(self.custom_name_var.get()))
+        title = tr("极智调试串口")
+        self.root.title(f"{title} - {self.instance_name}" if self.instance_name else title)
+        template, color, kw = self._status
+        self.status_label.config(text=tr(template, **kw), foreground=color)
+        none_new = tr("无")
+        was_none = self.line_ending_var.get() in ("无", "None")
+        self.le_combo.config(values=["\\r\\n", "\\n", "\\r", none_new])
+        if was_none:
+            self.line_ending_var.set(none_new)
+        try:
+            self.tray_icon.title = tr("XTELL Serial 串口助手")
+            self.tray_icon.menu = pystray.Menu(
+                pystray.MenuItem(tr("显示窗口"), self._show_window, default=True),
+                pystray.MenuItem(tr("退出"), self._quit_from_tray))
+            self.tray_icon.update_menu()
+        except Exception:
+            pass
 
     # ===== 每窗口独立控制 =====
     
     def _toggle_pause_main(self):
         self.paused_main = not self.paused_main
-        self.main_pause_btn.config(text="继续滚动" if self.paused_main else "暂停滚动")
+        self.main_pause_btn.config(text=tr("继续滚动") if self.paused_main else "暂停滚动")
     
     def _toggle_pause_filter(self):
         self.paused_filter = not self.paused_filter
-        self.filter_pause_btn.config(text="继续滚动" if self.paused_filter else "暂停滚动")
+        self.filter_pause_btn.config(text=tr("继续滚动") if self.paused_filter else "暂停滚动")
     
     def _toggle_pause_send_history(self):
         self.paused_send_history = not self.paused_send_history
-        self.hist_pause_btn.config(text="继续滚动" if self.paused_send_history else "暂停滚动")
+        self.hist_pause_btn.config(text=tr("继续滚动") if self.paused_send_history else "暂停滚动")
     
     def _clear_main(self):
         """清空接收数据区和缓冲区"""
@@ -738,12 +815,13 @@ class SerialReceiver:
         return self._open_connection_impl(silent=False)
 
     def _open_connection_impl(self, silent=False):
-        def fail(text):
+        def fail(key, **kw):
+            shown = tr(key, **kw)
             if silent:
-                self.status_label.config(text=f"状态: {text}", foreground="red")
+                self._set_status("状态: {text}", "red", text=shown)
             else:
-                messagebox.showerror("错误", text)
-            return False, text
+                messagebox.showerror(tr("错误"), shown)
+            return False, en(key, **kw)
 
         self.encoding = self.encoding_combo.get()
         try:
@@ -763,18 +841,18 @@ class SerialReceiver:
             self.connection = SerialConnection(port, baudrate, timeout=0.1)
             self.connection.connect()
             self.running = True
-            self.open_btn.config(text="关闭连接")
-            self.status_label.config(text=f"状态: 已连接 {port} {baudrate}bps", foreground="green")
+            self.open_btn.config(text=tr("关闭连接"))
+            self._set_status("状态: 已连接 {port} {baud}bps", "green", port=port, baud=baudrate)
 
             self.receive_thread = threading.Thread(target=self.receive_data, daemon=True)
             self.receive_thread.start()
             self._process_rx_queue()
             self._mcp_send_status()
-            return True, f"已连接 {port} {baudrate}bps"
+            return True, f"Connected to {port} at {baudrate} bps"
         except Exception as e:
             self.connection = None
             self.running = False
-            return fail(f"连接失败: {str(e)}")
+            return fail("连接失败: {err}", err=str(e))
 
     def close_connection(self):
         self.running = False
@@ -787,8 +865,8 @@ class SerialReceiver:
             except:
                 pass
             self.connection = None
-        self.open_btn.config(text="打开连接")
-        self.status_label.config(text="状态: 未连接", foreground="gray")
+        self.open_btn.config(text=tr("打开连接"))
+        self._set_status("状态: 未连接", "gray")
         self._mcp_send_status()
 
     def receive_data(self):
@@ -981,7 +1059,7 @@ class SerialReceiver:
                         matches.append((m.start(), m.end()))
                 self.regex_error_label.config(text="")
             except re.error as e:
-                self.regex_error_label.config(text=f"正则错误: {e}")
+                self.regex_error_label.config(text=tr("正则错误: {err}", err=e))
                 return False, []
         else:
             start = 0
@@ -1099,9 +1177,9 @@ class SerialReceiver:
     def save_to_file(self):
         """选择文件并开始实时保存，或更换保存文件"""
         filepath = filedialog.asksaveasfilename(
-            title="选择保存文件",
+            title=tr("选择保存文件"),
             defaultextension=".txt",
-            filetypes=[("文本文件", "*.txt"), ("日志文件", "*.log"), ("所有文件", "*.*")]
+            filetypes=[(tr("文本文件"), "*.txt"), (tr("日志文件"), "*.log"), (tr("所有文件"), "*.*")]
         )
         if not filepath:
             return
@@ -1110,11 +1188,9 @@ class SerialReceiver:
         write_mode = 'a'  # 默认追加
         if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
             result = messagebox.askyesnocancel(
-                "文件已有内容",
-                f"文件 {os.path.basename(filepath)} 已有内容。\n\n"
-                "点击「是」覆盖原内容\n"
-                "点击「否」追加到末尾\n"
-                "点击「取消」放弃"
+                tr("文件已有内容"),
+                tr("文件 {name} 已有内容。\n\n点击「是」覆盖原内容\n点击「否」追加到末尾\n点击「取消」放弃",
+                   name=os.path.basename(filepath))
             )
             if result is None:  # 取消
                 return
@@ -1128,18 +1204,18 @@ class SerialReceiver:
         try:
             self.save_file_handle = open(filepath, write_mode, encoding='utf-8')
             self.save_filepath = filepath
-            self.file_menu.entryconfigure(0, label="更换文件")
+            self.file_menu.entryconfigure(0, label=tr("更换文件"))
             self.file_menu.entryconfigure(1, state=tk.NORMAL)
-            self.status_label.config(text=f"实时保存到: {filepath}", foreground="blue")
+            self._set_status("实时保存到: {path}", "blue", path=filepath)
         except Exception as e:
-            messagebox.showerror("错误", f"打开文件失败: {str(e)}")
+            messagebox.showerror(tr("错误"), tr("打开文件失败: {err}", err=str(e)))
     
     def stop_save(self):
         """停止实时保存"""
         self._close_save_file()
-        self.file_menu.entryconfigure(0, label="保存文件")
+        self.file_menu.entryconfigure(0, label=tr("保存文件"))
         self.file_menu.entryconfigure(1, state=tk.DISABLED)
-        self.status_label.config(text=f"已停止保存: {self.save_filepath}", foreground="gray")
+        self._set_status("已停止保存: {path}", "gray", path=self.save_filepath)
         self.save_filepath = ""
     
     def _close_save_file(self):
@@ -1163,14 +1239,14 @@ class SerialReceiver:
                 self.save_file_handle.flush()
             except Exception:
                 self._close_save_file()
-                self.file_menu.entryconfigure(0, label="保存文件")
+                self.file_menu.entryconfigure(0, label=tr("保存文件"))
                 self.file_menu.entryconfigure(1, state=tk.DISABLED)
-                self.status_label.config(text="保存文件写入失败", foreground="red")
+                self._set_status("保存文件写入失败", "red")
     def _show_about(self):
         """显示关于对话框"""
         import webbrowser
         about_win = tk.Toplevel(self.root)
-        about_win.title("关于")
+        about_win.title(tr("关于"))
         about_win.geometry("400x320")
         about_win.resizable(False, False)
         about_win.transient(self.root)
@@ -1195,7 +1271,7 @@ class SerialReceiver:
         about_win.geometry(f"+{x}+{y}")
         about_win.grab_set()
         
-        ttk.Label(about_win, text="极智调试串口", font=("微软雅黑", 16, "bold")).pack(pady=(15, 5))
+        ttk.Label(about_win, text=tr("极智调试串口"), font=("Microsoft YaHei", 16, "bold")).pack(pady=(15, 5))
         ttk.Label(about_win, text=APP_VERSION, font=("Consolas", 10)).pack()
         ttk.Separator(about_win, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=30, pady=8)
         
@@ -1204,34 +1280,34 @@ class SerialReceiver:
         info_frame.pack(fill=tk.BOTH, expand=True, padx=30)
         
         features = [
-            "• 专业级串口调试与日志分析工具",
-            "• 支持 MCP 协议，可对接 AI 大模型",
-            "• 自带 Master Hub，跨进程多实例协同",
-            "• 支持正则表达式实时过滤与高亮",
-            "• 毫秒级时间戳与百万级行缓冲区"
+            tr("• 专业级串口调试与日志分析工具"),
+            tr("• 支持 MCP 协议，可对接 AI 大模型"),
+            tr("• 自带 Master Hub，跨进程多实例协同"),
+            tr("• 支持正则表达式实时过滤与高亮"),
+            tr("• 毫秒级时间戳与百万级行缓冲区")
         ]
         
         for feat in features:
-            ttk.Label(info_frame, text=feat, font=("微软雅黑", 9)).pack(anchor="w", pady=1)
+            ttk.Label(info_frame, text=feat, font=("Microsoft YaHei", 9)).pack(anchor="w", pady=1)
 
-        ttk.Label(about_win, text="深圳市极智未来科技有限公司", font=("微软雅黑", 10, "bold")).pack(pady=(10, 0))
+        ttk.Label(about_win, text=tr("深圳市极智未来科技有限公司"), font=("Microsoft YaHei", 10, "bold")).pack(pady=(10, 0))
         
         link = ttk.Label(about_win, text="https://www.xtell.cn/", foreground="blue", cursor="hand2", font=("Consolas", 10))
         link.pack(pady=2)
         link.bind("<Button-1>", lambda e: webbrowser.open("https://www.xtell.cn/"))
         
-        ttk.Button(about_win, text="确定", command=about_win.destroy).pack(pady=10)
+        ttk.Button(about_win, text=tr("确定"), command=about_win.destroy).pack(pady=10)
     
     def _on_close(self):
         """窗口关闭时直接退出程序"""
-        self._真正退出()
+        self._quit_app()
     
     def _on_minimize(self, event):
         """当窗口由于点击最小化按钮而 Unmap 时，隐藏任务栏图标"""
         if self.root.state() == 'iconic':
             self.root.withdraw()
     
-    def _真正退出(self):
+    def _quit_app(self):
         """真正退出程序"""
         self.running = False
         self.repeat_sending = False
@@ -1269,7 +1345,7 @@ class SerialReceiver:
     def send_data(self):
         """发送输入框中的数据"""
         if not self.connection or not self.running:
-            messagebox.showwarning("提示", "连接未打开")
+            messagebox.showwarning(tr("提示"), tr("连接未打开"))
             return
 
         text = self.send_text.get("1.0", tk.END).strip()
@@ -1326,7 +1402,7 @@ class SerialReceiver:
             self.send_history.config(state=tk.DISABLED)
 
         except Exception:
-            self.status_label.config(text=f"发送失败", foreground="red")
+            self._set_status("发送失败", "red")
     
     def _toggle_repeat_send(self):
         """切换重复发送"""
@@ -1335,10 +1411,10 @@ class SerialReceiver:
             if self.repeat_job:
                 self.root.after_cancel(self.repeat_job)
                 self.repeat_job = None
-            self.repeat_btn.config(text="开始重复")
+            self.repeat_btn.config(text=tr("开始重复"))
         else:
             if not self.connection or not self.running:
-                messagebox.showwarning("提示", "连接未打开")
+                messagebox.showwarning(tr("提示"), tr("连接未打开"))
                 return
             text = self.send_text.get("1.0", tk.END).strip()
             if not text:
@@ -1350,14 +1426,14 @@ class SerialReceiver:
             except ValueError:
                 interval = 1000
             self.repeat_sending = True
-            self.repeat_btn.config(text="停止重复")
+            self.repeat_btn.config(text=tr("停止重复"))
             self._do_repeat_send(text, interval)
     
     def _do_repeat_send(self, text, interval):
         """定时重复发送"""
         if not self.repeat_sending or not self.running:
             self.repeat_sending = False
-            self.repeat_btn.config(text="开始重复")
+            self.repeat_btn.config(text=tr("开始重复"))
             return
         self._send_once(text)
         self.repeat_job = self.root.after(interval, self._do_repeat_send, text, interval)
@@ -1367,15 +1443,15 @@ class SerialReceiver:
         try:
             image = Image.open(get_icon_path(64))
         except Exception as e:
-            print(f"加载图标失败: {e}, 使用默认图标")
+            print(f"failed to load the tray icon: {e}; using a default icon")
             image = Image.new('RGB', (64, 64), color='white')
         
         menu = pystray.Menu(
-            pystray.MenuItem("显示窗口", self._show_window, default=True),
-            pystray.MenuItem("退出", self._quit_from_tray)
+            pystray.MenuItem(tr("显示窗口"), self._show_window, default=True),
+            pystray.MenuItem(tr("退出"), self._quit_from_tray)
         )
         
-        self.tray_icon = pystray.Icon("xtell-serial", image, "XTELL Serial 串口助手", menu)
+        self.tray_icon = pystray.Icon("xtell-serial", image, tr("XTELL Serial 串口助手"), menu)
         self.tray_thread = threading.Thread(target=self.tray_icon.run, daemon=True)
         self.tray_thread.start()
     
@@ -1394,7 +1470,7 @@ class SerialReceiver:
     
     def _quit_from_tray(self, icon=None, item=None):
         """从托盘退出"""
-        self.root.after(0, self._真正退出)
+        self.root.after(0, self._quit_app)
     
     def on_filter_key_release(self, event):
         """过滤框按键释放事件，正则模式防抖2秒后触发，字符串模式立即触发，回车立即触发"""
@@ -1444,10 +1520,10 @@ class SerialReceiver:
     def _add_text_context_menu(self, widget):
         """为文本组件添加右键菜单和 Ctrl+A 全选快捷键"""
         menu = tk.Menu(widget, tearoff=0)
-        menu.add_command(label="全选", command=lambda: self._select_all(widget))
-        menu.add_command(label="复制", command=lambda: self._copy_selection(widget))
+        menu.add_command(label=tr("全选"), command=lambda: self._select_all(widget))
+        menu.add_command(label=tr("复制"), command=lambda: self._copy_selection(widget))
         menu.add_separator()
-        menu.add_command(label="清空", command=lambda: widget.delete("1.0", tk.END))
+        menu.add_command(label=tr("清空"), command=lambda: widget.delete("1.0", tk.END))
 
         def show_menu(event):
             menu.post(event.x_root, event.y_root)
@@ -1475,7 +1551,7 @@ class SerialReceiver:
         except tk.TclError:
             pass # 可能没有选择内容
         except Exception as e:
-            print(f"复制到剪贴板失败: {e}")
+            print(f"copy to clipboard failed: {e}")
 
     def _on_filter_double_click(self, event):
         """双击过滤窗口行，同步跳转到主接收窗口对应行"""
@@ -1517,7 +1593,7 @@ if __name__ == "__main__":
         icon = tk.PhotoImage(file=get_icon_path(32))
         root.iconphoto(False, icon)
     except Exception as e:
-        print(f"加载窗口图标失败: {e}")
+        print(f"failed to load the window icon: {e}")
     
     app = SerialReceiver(root)
     root.mainloop()

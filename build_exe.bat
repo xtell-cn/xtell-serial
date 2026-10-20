@@ -1,8 +1,8 @@
 @echo off
 echo ==================================================
 echo Starting PyInstaller packaging for xtell-serial...
-echo   -> xtell-serial.exe      (GUI, windowed, with icons)
-echo   -> xtell-serial-mcp.exe  (MCP server, console)
+echo   =^> xtell-serial.exe      (GUI, windowed, with icons)
+echo   =^> xtell-serial-mcp.exe  (MCP server, console)
 echo ==================================================
 
 :: Clean previous build artifacts

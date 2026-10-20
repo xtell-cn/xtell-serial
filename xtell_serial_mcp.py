@@ -27,8 +27,8 @@ CONNECT_TIMEOUT = 1.0
 RPC_TIMEOUT = 20.0
 SRV_TAG = "xtell_serial_hub"
 
-NO_HUB_HINT = (f"未检测到运行中的 xtell-serial (Hub 未监听 {HUB_HOST}:{HUB_PORT})。\n"
-               "请先打开 xtell-serial 程序后重试。")
+NO_HUB_HINT = (f"No running xtell-serial was found (the hub is not listening on {HUB_HOST}:{HUB_PORT}).\n"
+               "Please open the xtell-serial program and try again.")
 
 
 def log(msg):
@@ -40,14 +40,14 @@ def log(msg):
 
 
 NO_STDIO_MSG = (
-    "xtell-serial-mcp 是 MCP stdio 服务端, 只能由 Claude Code / Claude Desktop / Antigravity 等客户端\n"
-    "通过管道拉起, 不能直接双击运行。\n\n"
-    "请把它注册到客户端配置的 mcpServers 里:\n"
+    "xtell-serial-mcp is an MCP stdio server. It can only be started by a client such as\n"
+    "Claude Code, Claude Desktop or Antigravity through a pipe; it cannot be run by double-clicking.\n\n"
+    "Register it under mcpServers in your client configuration:\n"
     '  "xtell-serial": {\n'
-    '      "command": "<本程序的完整路径>",\n'
+    '      "command": "<full path of this program>",\n'
     '      "args": []\n'
     "  }\n\n"
-    "然后重启客户端。串口界面请运行同目录下的 xtell-serial.exe。"
+    "Then restart the client. To open the serial terminal, run xtell-serial.exe from the same folder."
 )
 
 
@@ -60,7 +60,7 @@ def require_stdio():
         logfile = os.path.join(os.path.dirname(os.path.abspath(sys.executable)),
                                "xtell-serial-mcp_error.log")
         with open(logfile, "a", encoding="utf-8") as f:
-            f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 没有 stdin/stdout, 拒绝启动\n")
+            f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] no stdin/stdout available, refusing to start\n")
     except Exception:
         pass
 
@@ -129,7 +129,7 @@ class HubLink:
                     continue
                 if msg.get("cmd") == "hello_ack":
                     if msg.get("srv") != SRV_TAG:
-                        log(f"端口 {HUB_PORT} 被无关程序占用: {msg}")
+                        log(f"port {HUB_PORT} is held by an unrelated program: {msg}")
                 elif msg.get("cmd") == "rpc_result":
                     fut = self.pending.pop(msg.get("req_id"), None)
                     if fut and not fut.done():
@@ -156,11 +156,11 @@ class HubLink:
             res = await asyncio.wait_for(fut, RPC_TIMEOUT)
             return res.get("text", "")
         except asyncio.TimeoutError:
-            return f"Hub 在 {RPC_TIMEOUT}s 内未返回 {action} 的结果, 请检查目标窗口是否卡死。"
+            return f"The hub did not return a result for {action} within {RPC_TIMEOUT}s. Check whether the target window is frozen."
         except ConnectionError:
-            return "与 Hub 的连接已断开(可能是主窗口被关闭), 请稍后重试。"
+            return "The connection to the hub was lost (the main window may have been closed). Please try again shortly."
         except Exception as e:
-            return f"与 Hub 通信失败: {e}"
+            return f"Communication with the hub failed: {e}"
         finally:
             self.pending.pop(req_id, None)
 
@@ -180,7 +180,7 @@ async def list_tools():
     return [
         types.Tool(
             name="list_serial_ports",
-            description="扫描电脑物理串口，返回可用串口列表。",
+            description="List the serial ports on this computer.",
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -188,49 +188,49 @@ async def list_tools():
         ),
         types.Tool(
             name="connect_serial",
-            description="控制连接特定串口。如果所有已有窗口都在使用其他串口，会自动拉起新窗口连上此串口。",
+            description="Connect a serial port. If every existing window is already using another port, a new window is opened for this one.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "port": {"type": "string", "description": "要连接的串口号，例如 COM3 或 /dev/ttyUSB0"},
-                    "baudrate": {"type": "integer", "description": "波特率，例如 115200"},
+                    "port": {"type": "string", "description": "Port to connect, for example COM3 or /dev/ttyUSB0"},
+                    "baudrate": {"type": "integer", "description": "Baud rate, for example 115200"},
                 },
                 "required": ["port", "baudrate"]
             }
         ),
         types.Tool(
             name="send_serial_data",
-            description="控制往特定串口发送单条数据。必须确保已经 connect_serial 连上了该串口。",
+            description="Send one message to a serial port. The port must already be connected with connect_serial.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "port": {"type": "string", "description": "目标串口号"},
-                    "data": {"type": "string", "description": "要发送的文本或 HEX 字符串"},
-                    "hex_mode": {"type": "boolean", "description": "是否以 HEX 十六进制模式发送", "default": False},
+                    "port": {"type": "string", "description": "Target port"},
+                    "data": {"type": "string", "description": "Text or HEX string to send"},
+                    "hex_mode": {"type": "boolean", "description": "Send as hexadecimal bytes", "default": False},
                 },
                 "required": ["port", "data"]
             }
         ),
         types.Tool(
             name="disconnect_serial",
-            description="控制特定串口断开连接。",
+            description="Disconnect a serial port.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "port": {"type": "string", "description": "目标串口号"}
+                    "port": {"type": "string", "description": "Target port"}
                 },
                 "required": ["port"]
             }
         ),
         types.Tool(
             name="start_auto_send",
-            description="开启 GUI 定时自动发送数据。",
+            description="Start sending data repeatedly on a timer.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "port": {"type": "string"},
-                    "data": {"type": "string", "description": "要发送的数据"},
-                    "interval_ms": {"type": "integer", "description": "时间间隔(毫秒)", "default": 1000},
+                    "data": {"type": "string", "description": "Data to send"},
+                    "interval_ms": {"type": "integer", "description": "Interval in milliseconds", "default": 1000},
                     "hex_mode": {"type": "boolean", "default": False}
                 },
                 "required": ["port", "data", "interval_ms"]
@@ -238,7 +238,7 @@ async def list_tools():
         ),
         types.Tool(
             name="stop_auto_send",
-            description="停止 GUI 定时自动发送。",
+            description="Stop the repeating send.",
             inputSchema={
                 "type": "object",
                 "properties": {"port": {"type": "string"}},
@@ -247,7 +247,7 @@ async def list_tools():
         ),
         types.Tool(
             name="set_filter",
-            description="设置 GUI 上的过滤条件。",
+            description="Set the live filter of a window.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -261,19 +261,19 @@ async def list_tools():
         ),
         types.Tool(
             name="start_saving_file",
-            description="开启后台将串口数据保存至本地文件。文件必须是全路径。",
+            description="Start saving the data received on a port to a local file. The path must be absolute.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "port": {"type": "string"},
-                    "filepath": {"type": "string", "description": "绝对路径文件, 例 C:/log.txt"}
+                    "filepath": {"type": "string", "description": "Absolute file path, for example C:/log.txt"}
                 },
                 "required": ["port", "filepath"]
             }
         ),
         types.Tool(
             name="stop_saving_file",
-            description="停止保存并关闭文件。",
+            description="Stop saving and close the file.",
             inputSchema={
                 "type": "object",
                 "properties": {"port": {"type": "string"}},
@@ -282,7 +282,7 @@ async def list_tools():
         ),
         types.Tool(
             name="clear_data_buffers",
-            description="清空 GUI 界面上的数据文本。",
+            description="Clear the text buffers of a window.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -294,35 +294,35 @@ async def list_tools():
         ),
         types.Tool(
             name="read_received_data",
-            description="抓取串口主接收窗口的数据记录（最后 N 行）。可以传入起止时间戳来过滤（格式: yyyy-mm-dd HH:MM:SS.mmm）。",
+            description="Read the last N lines of the main receive window. Optional start and end timestamps filter the range (format: yyyy-mm-dd HH:MM:SS.mmm).",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "port": {"type": "string"},
                     "lines_count": {"type": "integer", "default": 50},
-                    "start_time": {"type": "string", "description": "可选起点时间戳"},
-                    "end_time": {"type": "string", "description": "可选终点时间戳"}
+                    "start_time": {"type": "string", "description": "Optional start timestamp"},
+                    "end_time": {"type": "string", "description": "Optional end timestamp"}
                 },
                 "required": ["port"]
             }
         ),
         types.Tool(
             name="read_sent_data",
-            description="抓取串口发送历史的数据记录（最后 N 行）。",
+            description="Read the last N lines of the send history.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "port": {"type": "string"},
                     "lines_count": {"type": "integer", "default": 50},
-                    "start_time": {"type": "string", "description": "可选起点时间戳"},
-                    "end_time": {"type": "string", "description": "可选终点时间戳"}
+                    "start_time": {"type": "string", "description": "Optional start timestamp"},
+                    "end_time": {"type": "string", "description": "Optional end timestamp"}
                 },
                 "required": ["port"]
             }
         ),
         types.Tool(
             name="read_filtered_data",
-            description="抓取命中过滤规则的数据记录（最后 N 行）。",
+            description="Read the last N lines that match the current filter.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -336,11 +336,11 @@ async def list_tools():
         ),
         types.Tool(
             name="get_buffer_status",
-            description="查询指定串口当前窗口的缓冲区行数使用情况与占用百分比。",
+            description="Report how many lines the window buffer holds, its limit and the percentage used.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "port": {"type": "string", "description": "目标串口号"}
+                    "port": {"type": "string", "description": "Target port"}
                 },
                 "required": ["port"]
             }
@@ -372,9 +372,9 @@ def local_ports_text():
         import serial.tools.list_ports
         devs = [p.device for p in serial.tools.list_ports.comports()]
         return (f"Available ports: {json.dumps(devs)}\n"
-                f"(注意: {NO_HUB_HINT} 上述列表由 MCP 适配层直接枚举得到。)")
+                f"(Note: {NO_HUB_HINT} The list above was enumerated directly by the MCP adapter.)")
     except Exception as e:
-        return f"{NO_HUB_HINT} 本地枚举串口也失败了: {e}"
+        return f"{NO_HUB_HINT} Enumerating local ports also failed: {e}"
 
 
 @mcp_server.call_tool()

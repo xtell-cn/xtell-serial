@@ -163,19 +163,19 @@ def to_gui_cmd(action, msg):
 
 
 def ok_text(action, port, msg, win_name=""):
-    where = f"{port}" + (f" (窗口: {win_name})" if win_name else "")
+    where = f"{port}" + (f" (window: {win_name})" if win_name else "")
     return {
-        "connect": f"已让窗口连接 {where}。",
-        "disconnect": f"已断开 {where}。",
-        "send": f"已向 {where} 发送: {msg.get('data', '')}",
-        "auto_send_on": f"已在 {where} 开启定时发送, 间隔 {msg.get('interval_ms', 1000)}ms。",
-        "auto_send_off": f"已停止 {where} 的定时发送。",
-        "set_filter": f"已在 {where} 设置过滤: {msg.get('keyword', '')}",
-        "save_on": f"已开始把 {where} 的数据保存到 {msg.get('filepath')}。",
-        "save_off": f"已停止保存 {where} 的数据。",
-        "clear": f"已清空 {where} 的显示缓冲({msg.get('target', 'all')})。",
-        "get_buffer_status": f"{where} 缓存查询完成。",
-    }.get(action, f"{action} 已在 {where} 执行。")
+        "connect": f"Asked the window to connect {where}.",
+        "disconnect": f"Disconnected {where}.",
+        "send": f"Sent to {where}: {msg.get('data', '')}",
+        "auto_send_on": f"Started repeat sending on {where}, interval {msg.get('interval_ms', 1000)} ms.",
+        "auto_send_off": f"Stopped repeat sending on {where}.",
+        "set_filter": f"Filter set on {where}: {msg.get('keyword', '')}",
+        "save_on": f"Started saving data from {where} to {msg.get('filepath')}.",
+        "save_off": f"Stopped saving data from {where}.",
+        "clear": f"Cleared the display buffer of {where} ({msg.get('target', 'all')}).",
+        "get_buffer_status": f"Buffer status query for {where} completed.",
+    }.get(action, f"{action} executed on {where}.")
 
 
 async def dispatch_rpc(mcp_cid, msg):
@@ -193,21 +193,21 @@ async def dispatch_rpc(mcp_cid, msg):
         # 1) 本机是否真的存在该串口
         if normalize_port(port) not in [normalize_port(d) for d in list_local_ports()]:
             return await reply(mcp_cid, req_id, False,
-                               f"本机不存在串口 {port}。当前可用: {list_local_ports()}")
+                               f"Serial port {port} does not exist on this computer. Available: {list_local_ports()}")
         # 2) 找空闲窗口; 没有就拉起一个新的 GUI client
         target = find_idle_gui()
         if not target:
             if not spawn_gui_client():
                 return await reply(mcp_cid, req_id, False,
-                                   "无法拉起新窗口, 请手动打开 xtell-serial 后重试。")
+                                   "Could not start a new window. Please open xtell-serial manually and try again.")
             target = await wait_for_idle_gui()
             if not target:
                 return await reply(mcp_cid, req_id, False,
-                                   "拉起新窗口超时, 请手动打开 xtell-serial 后重试。")
+                                   "Timed out starting a new window. Please open xtell-serial manually and try again.")
 
     if not target:
         return await reply(mcp_cid, req_id, False,
-                           f"当前没有窗口在管理 {port}, 请先调用 connect_serial。")
+                           f"No window is managing {port}. Call connect_serial first.")
 
     if action in QUERY_TARGET:
         pending[req_id] = mcp_cid          # 记住来源, response 回来时按此回传
@@ -233,22 +233,22 @@ async def dispatch_rpc(mcp_cid, msg):
             ack = await asyncio.wait_for(fut, ACK_TIMEOUT)
         except asyncio.TimeoutError:
             return await reply(mcp_cid, req_id, False,
-                               f"指令已下发给窗口 {win or port}, 但 {ACK_TIMEOUT}s 内没等到执行结果"
-                               f"(窗口可能正忙于处理大量串口数据)。请用 read_received_data "
-                               f"或看界面确认是否已生效。")
+                               f"The command was sent to window {win or port}, but no result arrived within {ACK_TIMEOUT}s "
+                               f"(the window may be busy with a lot of serial data). Use read_received_data "
+                               f"or check the window to confirm whether it took effect.")
         except Exception as e:
-            return await reply(mcp_cid, req_id, False, f"下发指令失败: {e}")
+            return await reply(mcp_cid, req_id, False, f"Failed to deliver the command: {e}")
         finally:
             ack_futures.pop(req_id, None)
         text = ack.get("text", "")
-        where = f"{port}" + (f" (窗口: {win})" if win else "")
+        where = f"{port}" + (f" (window: {win})" if win else "")
         return await reply(mcp_cid, req_id, ack.get("ok", False),
                            f"{where}: {text}" if text else ok_text(action, port, msg, win))
 
     try:
         await send(target["writer"], cmd)
     except Exception as e:
-        return await reply(mcp_cid, req_id, False, f"下发指令失败: {e}")
+        return await reply(mcp_cid, req_id, False, f"Failed to deliver the command: {e}")
     await reply(mcp_cid, req_id, True, ok_text(action, port, msg, win))
 
 
@@ -346,7 +346,7 @@ def try_become_hub(port=HUB_PORT):
         sock.setblocking(False)
     except OSError as e:
         sock.close()
-        log(f"bind {port} failed ({e}); 回落为 client")
+        log(f"bind {port} failed ({e}); falling back to client")
         return False
 
     def run():
@@ -365,7 +365,7 @@ def try_become_hub(port=HUB_PORT):
     _hub_thread = threading.Thread(target=run, daemon=True, name="xtell-serial-hub-server")
     _hub_thread.start()
     _is_hub = True
-    log("本实例成为 Hub")
+    log("this instance is now the hub")
     return True
 
 

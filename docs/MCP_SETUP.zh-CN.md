@@ -244,7 +244,9 @@ sequenceDiagram
 
 ## 5. 常见排错与自愈指南 (FAQ)
 
-### Q1: AI 调用工具时提示 `请先打开 xtell-serial GUI 并连接串口`
+> 注：MCP 服务端返回给 AI 的提示文字统一为英文，下面括号里是中文含义。
+
+### Q1: AI 调用工具时提示 `No running xtell-serial was found ...`（未检测到运行中的 xtell-serial）
 - **原因**：当前电脑上没有运行 `xtell-serial.exe`，TCP Hub 端口 `50016` 未就绪。
 - **解决办法**：双击运行发布包中的 `xtell-serial.exe`，或者 AI 可以直接调用 `connect_serial` 工具，适配层会自动尝试唤起 GUI 进程。
 
@@ -252,7 +254,7 @@ sequenceDiagram
 - **原因**：大概率将 `command` 错配成了 `xtell-serial.exe`，或者防火墙拦截了 `127.0.0.1` 回环连接。
 - **解决办法**：确认配置文件中的 `command` 指向的是 `xtell-serial-mcp.exe`。
 
-### Q3: 提示 `当前没有窗口在管理串口 COMx`
+### Q3: 提示 `No window is managing COMx`（当前没有窗口在管理该串口）
 - **原因**：尚未对该串口执行连接操作。
 - **解决办法**：先调用 `connect_serial(port="COMx", baudrate=...)` 完成连接，再执行收发指令。
 
