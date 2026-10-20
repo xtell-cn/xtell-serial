@@ -17,6 +17,7 @@ from PIL import Image
 import pystray
 import ctypes
 import queue
+import collections
 from abc import ABC, abstractmethod
 
 import hub_server
@@ -163,6 +164,7 @@ class SerialReceiver:
         self.running = False
         self.receive_thread = None
         self.max_lines = DEFAULT_MAX_LINES
+        self.encoding = "utf-8"
 
         # 每窗口独立的暂停状态
         self.paused_main = False
@@ -173,8 +175,8 @@ class SerialReceiver:
         self.all_lines = []
         self.receive_line_counter = 0  # 接收数据行号计数器
         self.send_history_counter = 0  # 发送历史行号计数器
-        self.line_buffer = ""  # 用于累积不完整的行
-        self.raw_buffer = b""  # 用于累积不完整的原始bytes
+        self._rx_pending = collections.deque()  # 已从队列取出、尚未解析的数据块
+        self._rx_partial = b""  # 尚未收到换行符的不完整行（原始 bytes）
         self.port_mapping = {} # 用于描述名到设备名的映射
         
         # 过滤关键字历史
@@ -416,12 +418,11 @@ class SerialReceiver:
 
         result_lines = []
         if target in ["main", "filter"]:
+            matcher = self._make_matcher(self.filter_entry.get().strip()) if target == "filter" else None
             for line_text, ts, _ln, _hex in self.all_lines:
                 if not time_in_range(ts, start_time, end_time): continue
                 if target == "filter":
-                    pattern = self.filter_entry.get().strip()
-                    matched, _ = self._match_line(line_text, pattern)
-                    if not matched: continue
+                    if not matcher or not matcher(line_text): continue
                 result_lines.append(f"[{ts}] {line_text.strip()}")
                 
         elif target == "sent":
@@ -536,6 +537,7 @@ class SerialReceiver:
         self.main_text.tag_config("line_number", foreground="#999999", font=("Consolas", 9))
         self.main_text.tag_config("timestamp", foreground="#6688aa", font=("Consolas", 9, "italic"))
         self.main_text.tag_config("highlight", background="yellow", foreground="red")
+        self.main_text.tag_config("notice", foreground="#888888", font=("Consolas", 9, "italic"))
         self.main_text.tag_config("jump_highlight", background="#00ff00") # 绿色闪烁提示
         self.paned.add(main_frame, weight=3)
         
@@ -798,22 +800,22 @@ class SerialReceiver:
     
     def _toggle_pause_main(self):
         self.paused_main = not self.paused_main
-        self.main_pause_btn.config(text=tr("继续滚动") if self.paused_main else "暂停滚动")
+        self.main_pause_btn.config(text=tr("继续滚动") if self.paused_main else tr("暂停滚动"))
     
     def _toggle_pause_filter(self):
         self.paused_filter = not self.paused_filter
-        self.filter_pause_btn.config(text=tr("继续滚动") if self.paused_filter else "暂停滚动")
+        self.filter_pause_btn.config(text=tr("继续滚动") if self.paused_filter else tr("暂停滚动"))
     
     def _toggle_pause_send_history(self):
         self.paused_send_history = not self.paused_send_history
-        self.hist_pause_btn.config(text=tr("继续滚动") if self.paused_send_history else "暂停滚动")
+        self.hist_pause_btn.config(text=tr("继续滚动") if self.paused_send_history else tr("暂停滚动"))
     
     def _clear_main(self):
         """清空接收数据区和缓冲区"""
         self.main_text.delete("1.0", tk.END)
         self.all_lines.clear()
-        self.line_buffer = ""
-        self.raw_buffer = b""
+        self._rx_pending.clear()
+        self._rx_partial = b""
         self.receive_line_counter = 0
         self._update_buffer_usage()
         # 同时清空过滤结果
@@ -870,6 +872,8 @@ class SerialReceiver:
             self.open_btn.config(text=tr("关闭连接"))
             self._set_status("状态: 已连接 {port} {baud}bps", "green", port=port, baud=baudrate)
 
+            self._rx_pending.clear()
+            self._rx_partial = b""
             self.receive_thread = threading.Thread(target=self.receive_data, daemon=True)
             self.receive_thread.start()
             self._process_rx_queue()
@@ -908,23 +912,100 @@ class SerialReceiver:
                 break
             time.sleep(0.01)
             
+    # ===== 接收流水线：队列 -> 解析（限时）-> 批量绘制 =====
+    # 过去每行都单独操作 Tk 控件并强制滚动，数据一密集界面线程就被占满而卡死。
+    # 现在每个 tick 只解析有限时间，一次性批量插入，超出绘制上限的行仍然保存在缓冲区和文件里。
+
+    RX_TICK_MS = 40             # 正常情况下队列的检查间隔
+    RX_BACKLOG_MS = 5           # 有积压时尽快继续处理，同时让出时间给界面事件
+    RX_PARSE_BUDGET_S = 0.025   # 单个 tick 最多花多久解析数据
+    RX_MAX_DRAW_LINES = 600     # 单个 tick 最多在界面上绘制多少行
+    REBUILD_CHUNK = 2000        # 整体重绘时每批插入的行数
+    TRIM_SLACK = 1000           # 超出上限多少行才裁剪一次，避免每个 tick 都裁剪
+
     def _process_rx_queue(self):
         if not self.running:
             return
-        
-        data_chunks = []
-        while True:
+
+        # 先把已到达的数据全部搬到待处理队列（只是转移引用，很快）
+        try:
+            while True:
+                self._rx_pending.append(self.rx_queue.get_nowait())
+        except queue.Empty:
+            pass
+
+        entries = []
+        deadline = time.perf_counter() + self.RX_PARSE_BUDGET_S
+        while self._rx_pending and time.perf_counter() < deadline:
+            self._parse_rx_bytes(self._rx_pending.popleft(), entries)
+        if entries:
+            self._commit_entries(entries)
+        self._timeout_flush()
+
+        delay = self.RX_BACKLOG_MS if (self._rx_pending or not self.rx_queue.empty()) else self.RX_TICK_MS
+        self.rx_timer = self.root.after(delay, self._process_rx_queue)
+
+    def _decode_line(self, raw):
+        try:
+            return raw.decode(self.encoding, errors='replace')
+        except LookupError:
+            return raw.decode('utf-8', errors='replace')
+
+    def _parse_rx_bytes(self, data, entries):
+        """按换行符把原始字节切成行，追加到 entries。
+
+        换行符 0x0A 在 utf-8 / gbk / gb2312 / ascii 中都不会出现在多字节字符内部，
+        所以先在字节上切分再解码，不会把一个汉字切成两半。
+        """
+        parts = (self._rx_partial + data).split(b'\n')
+        self._rx_partial = parts.pop()
+        if not parts:
+            return
+        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        counter = self.receive_line_counter
+        for part in parts:
+            raw = part + b'\n'
+            counter += 1
+            entries.append((self._decode_line(raw), timestamp, counter, raw.hex()))
+        self.receive_line_counter = counter
+
+    def _commit_entries(self, entries):
+        """保存新行、写文件，并把需要显示的部分批量画到界面上。"""
+        self.all_lines.extend(entries)
+        self._write_entries_to_file(entries)
+
+        pattern = self.filter_entry.get().strip()
+        matcher = self._make_matcher(pattern)
+
+        draw = entries
+        skipped = 0
+        if len(draw) > self.RX_MAX_DRAW_LINES:
+            skipped = len(draw) - self.RX_MAX_DRAW_LINES
+            draw = draw[-self.RX_MAX_DRAW_LINES:]
+        self._draw_main(draw, matcher, skipped)
+
+        if matcher:
+            # 过滤要看全部新行（否则突发数据里的 ERR 会被漏掉），只是绘制数量受限
+            hits = [e for e in entries if matcher(e[0])]
+            if hits:
+                self._draw_filter(hits[-self.RX_MAX_DRAW_LINES:])
+                self.filter_count_label.config(text=str(int(self.filter_count_label.cget("text")) + len(hits)))
+
+        self._trim_buffer()
+        self._update_buffer_usage()
+
+    def _trim_buffer(self):
+        """缓冲区超过上限（加一点余量）后一次性裁剪到上限。"""
+        limit = self.max_lines + self.TRIM_SLACK
+        if len(self.all_lines) > limit:
+            del self.all_lines[:len(self.all_lines) - self.max_lines]
+        for widget in (self.main_text, self.filter_text):
             try:
-                data_chunks.append(self.rx_queue.get_nowait())
-            except queue.Empty:
-                break
-                
-        if data_chunks:
-            combined_data = b''.join(data_chunks)
-            self.process_received_data(combined_data)
-            self._timeout_flush()
-            
-        self.rx_timer = self.root.after(50, self._process_rx_queue)
+                total = int(widget.index('end-1c').split('.')[0])
+                if total > limit:
+                    widget.delete("1.0", f"{total - self.max_lines + 1}.0")
+            except Exception:
+                pass
 
     def _on_max_lines_changed(self, event=None):
         """最大行数输入变化时更新"""
@@ -938,58 +1019,6 @@ class SerialReceiver:
         self._trim_buffer()
         self._update_buffer_usage()
     
-    def process_received_data(self, data):
-        """处理接收到的原始数据，按行分割并存储"""
-        try:
-            text = data.decode(self.encoding, errors='replace')
-        except Exception:
-            text = data.hex()
-
-        # 同步累积原始bytes
-        self.raw_buffer += data
-
-        # 将数据累积到行缓冲区，按换行符分割成行
-        self.line_buffer += text
-        
-        while '\n' in self.line_buffer:
-            line, self.line_buffer = self.line_buffer.split('\n', 1)
-            line_bytes_len = len(line.encode(self.encoding, errors='replace')) + 1
-            if self.raw_buffer:
-                raw_part = self.raw_buffer[:line_bytes_len]
-                self.raw_buffer = self.raw_buffer[line_bytes_len:]
-            else:
-                raw_part = b""
-            
-            complete_line = line + '\n'
-            timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-            self.receive_line_counter += 1
-            line_num = self.receive_line_counter
-            hex_str = raw_part.hex()
-            self.all_lines.append((complete_line, timestamp, line_num, hex_str))
-            self._append_line_to_main(complete_line, timestamp, line_num, hex_str)
-            self._try_append_to_filter(complete_line, timestamp, line_num)
-            self._write_line_to_file(complete_line, timestamp)
-        
-        # 缓冲区超限时裁剪
-        self._trim_buffer()
-        self._update_buffer_usage()
-    
-    def _trim_buffer(self):
-        """裁剪缓冲区到最大行数限制"""
-        if len(self.all_lines) > self.max_lines:
-            trim_count = len(self.all_lines) - self.max_lines
-            self.all_lines = self.all_lines[trim_count:]
-            # 仅删除顶部的行来反映裁剪，避免全量刷新导致卡死
-            self.main_text.delete("1.0", f"{trim_count + 1}.0")
-            
-            # 过滤区也简单截断（如果有）
-            try:
-                filter_lines = int(self.filter_text.index('end-1c').split('.')[0])
-                if filter_lines > self.max_lines:
-                    self.filter_text.delete("1.0", f"{filter_lines - self.max_lines + 1}.0")
-            except Exception:
-                pass
-    
     def _update_buffer_usage(self):
         """更新缓冲区使用量显示"""
         current = len(self.all_lines)
@@ -1000,163 +1029,116 @@ class SerialReceiver:
         self.line_count_label.config(text=str(current))
     
     def _timeout_flush(self):
-        """超时100ms强制输出缓冲区剩余数据"""
-        current_time = time.time()
-        if self.line_buffer and (current_time - self.last_data_time) >= 0.1:
-            remaining = self.line_buffer
-            if remaining:
-                timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
-                self.receive_line_counter += 1
-                line_num = self.receive_line_counter
-                hex_str = self.raw_buffer.hex() if self.raw_buffer else ""
-                self.all_lines.append((remaining, timestamp, line_num, hex_str))
-                self._append_line_to_main(remaining, timestamp, line_num, hex_str)
-                self._try_append_to_filter(remaining, timestamp, line_num)
-                self._write_line_to_file(remaining, timestamp)
-                self.line_buffer = ""
-                self.raw_buffer = b""
-                self._update_buffer_usage()
-    
+        """超过 100ms 没有新数据时，把没有换行符的最后一行也显示出来。"""
+        if self._rx_partial and not self._rx_pending and (time.time() - self.last_data_time) >= 0.1:
+            raw = self._rx_partial
+            self._rx_partial = b""
+            timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+            self.receive_line_counter += 1
+            self._commit_entries([(self._decode_line(raw), timestamp, self.receive_line_counter, raw.hex())])
+
     def _get_timestamp_prefix(self, timestamp):
         """返回时间戳前缀字符串（如果启用）"""
         if self.show_timestamp_var.get():
             return f"[{timestamp}] "
         return ""
     
-    def _apply_highlight_to_range(self, widget, start_index, end_index, match_positions):
-        """对指定范围内的匹配位置应用高亮标签"""
-        # 注意：match_positions 是相对于 line 字符串开头的偏移
-        # 我们需要将其转换为 Tkinter 的 index (e.g. "line.char")
-        base_idx = widget.index(start_index)
-        line_num = base_idx.split('.')[0]
-        # 如果有时间戳前缀，偏移量需要增加前缀长度
-        prefix_len = len(self._get_timestamp_prefix("")) # 这里逻辑有点绕，直接传 line 进来更稳
-        
-    def _insert_with_timestamp(self, text_widget, line, timestamp, highlight_pattern=None, line_num=None, hex_str=""):
-        """插入一行，行号+时间戳用特殊样式，并根据 pattern 应用高亮"""
-        if self.show_hex_var.get() and hex_str:
-            display_text = hex_str
-        else:
-            display_text = line
-        
-        prefix = self._get_timestamp_prefix(timestamp)
-        start_mark = text_widget.index(tk.END + "-1c")
-        
-        # 插入行号
-        if line_num is not None and self.show_line_number_var.get():
-            text_widget.insert(tk.END, f"{line_num:>6} ", "line_number")
-        
-        if prefix:
-            text_widget.insert(tk.END, prefix, "timestamp")
-        
-        # 记录行文本开始的位置
-        line_start_idx = text_widget.index(tk.END + "-1c")
-        text_widget.insert(tk.END, display_text)
-        line_end_idx = text_widget.index(tk.END + "-1c")
-        
-        # 如果有高亮模式，应用高亮
-        if highlight_pattern:
-            matched, positions = self._match_line(line, highlight_pattern)
-            if matched:
-                row_base = line_start_idx.split('.')[0]
-                col_offset = int(line_start_idx.split('.')[1])
-                for s, e in positions:
-                    text_widget.tag_add("highlight", f"{row_base}.{col_offset + s}", f"{row_base}.{col_offset + e}")
-
-    def _append_line_to_main(self, line, timestamp, line_num=None, hex_str=""):
-        """追加一行到主显示区"""
-        pattern = self.filter_entry.get().strip()
-        self._insert_with_timestamp(self.main_text, line, timestamp, highlight_pattern=pattern, line_num=line_num, hex_str=hex_str)
-        if not self.paused_main:
-            self.main_text.see(tk.END)
-    
-    def _match_line(self, line, pattern):
-        """根据当前模式匹配行，返回 (是否匹配, 匹配位置列表[(start,end),...])"""
+    def _make_matcher(self, pattern):
+        """返回 行 -> [(起, 止), ...] 的函数；没有过滤条件时返回 None。每个 tick 只编译一次。"""
         if not pattern:
-            return False, []
-        
-        is_regex = self.filter_mode_var.get() == "regex"
-        matches = []
-        
-        if is_regex:
+            return None
+        if self.filter_mode_var.get() == "regex":
             try:
-                for m in re.finditer(pattern, line):
-                    if m.start() != m.end():  # 忽略空匹配
-                        matches.append((m.start(), m.end()))
-                self.regex_error_label.config(text="")
+                rx = re.compile(pattern)
             except re.error as e:
                 self.regex_error_label.config(text=tr("正则错误: {err}", err=e))
-                return False, []
-        else:
-            start = 0
-            while True:
-                idx = line.find(pattern, start)
-                if idx == -1:
-                    break
-                matches.append((idx, idx + len(pattern)))
-                start = idx + len(pattern)
-        
-        return len(matches) > 0, matches
-    
-    def _try_append_to_filter(self, line, timestamp="", line_num=None):
-        """如果行匹配过滤条件，追加到过滤结果区"""
-        pattern = self.filter_entry.get().strip()
-        if not pattern:
-            return
-        
-        matched, positions = self._match_line(line, pattern)
-        if matched:
-            self._insert_filter_line(line, timestamp, positions, line_num=line_num)
+                return lambda line: []
+            self.regex_error_label.config(text="")
+            return lambda line: [(m.start(), m.end()) for m in rx.finditer(line) if m.start() != m.end()]
+
+        size = len(pattern)
+
+        def find(line):
+            out = []
+            idx = line.find(pattern)
+            while idx != -1:
+                out.append((idx, idx + size))
+                idx = line.find(pattern, idx + size)
+            return out
+        return find
+
+    def _line_pairs(self, entries, matcher, for_filter=False):
+        """把若干行变成 Text.insert 需要的 [文本, 标签, 文本, 标签, ...] 序列。"""
+        show_ln = self.show_line_number_var.get()
+        show_ts = self.show_timestamp_var.get()
+        show_hex = self.show_hex_var.get() and not for_filter
+        pairs = []
+        for line, timestamp, line_num, hex_str in entries:
+            if show_ln:
+                pairs += (f"{line_num:>6} ", "line_number")
+            if show_ts:
+                pairs += (f"[{timestamp}] ", "timestamp")
+            if show_hex and hex_str:
+                pairs += (hex_str, "")
+                continue
+            positions = matcher(line) if matcher else None
+            if positions:
+                prev = 0
+                for start, end in positions:
+                    if start > prev:
+                        pairs += (line[prev:start], "")
+                    pairs += (line[start:end], "highlight")
+                    prev = end
+                if prev < len(line):
+                    pairs += (line[prev:], "")
+            else:
+                pairs += (line, "")
+        return pairs
+
+    def _draw_main(self, entries, matcher, skipped=0):
+        pairs = []
+        if skipped:
+            pairs += (tr("（数据突发：{n} 行未在此绘制，仍保存在缓冲区和文件中）", n=skipped) + "\n", "notice")
+        pairs += self._line_pairs(entries, matcher)
+        if pairs:
+            self.main_text.insert(tk.END, *pairs)
+            if not self.paused_main:
+                self.main_text.see(tk.END)
+
+    def _draw_filter(self, entries):
+        matcher = self._make_matcher(self.filter_entry.get().strip())
+        pairs = self._line_pairs(entries, matcher, for_filter=True)
+        if pairs:
+            self.filter_text.insert(tk.END, *pairs)
             if not self.paused_filter:
                 self.filter_text.see(tk.END)
-            current = int(self.filter_count_label.cget("text"))
-            self.filter_count_label.config(text=str(current + 1))
-    
-    def _insert_filter_line(self, line, timestamp, match_positions, line_num=None):
-        """插入一行到过滤区：行号+时间戳用特殊颜色，匹配内容高亮"""
-        # 插入行号
-        if line_num is not None and self.show_line_number_var.get():
-            self.filter_text.insert(tk.END, f"{line_num:>6} ", "line_number")
-        prefix = self._get_timestamp_prefix(timestamp)
-        if prefix:
-            self.filter_text.insert(tk.END, prefix, "timestamp")
-        # 按匹配位置分段插入，高亮匹配部分
-        prev_end = 0
-        for start, end in match_positions:
-            if start > prev_end:
-                self.filter_text.insert(tk.END, line[prev_end:start])
-            self.filter_text.insert(tk.END, line[start:end], "highlight")
-            prev_end = end
-        if prev_end < len(line):
-            self.filter_text.insert(tk.END, line[prev_end:])
-    
+
     def on_filter_changed(self, event=None):
         """过滤关键词或模式变化时，重新扫描所有已存储的行"""
         pattern = self.filter_entry.get().strip()
         self.regex_error_label.config(text="")
-        
+
         # 清空过滤结果区
         self.filter_text.delete("1.0", tk.END)
-        
+
         if not pattern:
             self.filter_count_label.config(text="0")
             return
-        
-        # 重新扫描所有行
-        count = 0
-        for line_text, timestamp, line_num, hex_str in self.all_lines:
-            matched, positions = self._match_line(line_text, pattern)
-            if matched:
-                self._insert_filter_line(line_text, timestamp, positions, line_num=line_num)
-                count += 1
-        
-        self.filter_count_label.config(text=str(count))
+
+        matcher = self._make_matcher(pattern)
+        hits = [entry for entry in self.all_lines if matcher(entry[0])]
+        for start in range(0, len(hits), self.REBUILD_CHUNK):
+            pairs = self._line_pairs(hits[start:start + self.REBUILD_CHUNK], matcher, for_filter=True)
+            if pairs:
+                self.filter_text.insert(tk.END, *pairs)
+
+        self.filter_count_label.config(text=str(len(hits)))
         if not self.paused_filter:
             self.filter_text.see(tk.END)
-            
+
         # 同步刷新主界面的高亮
         self._refresh_main_highlights(pattern)
-    
+
     def _refresh_main_highlights(self, pattern):
         """刷新主界面的高亮标签"""
         self.main_text.tag_remove("highlight", "1.0", tk.END)
@@ -1167,35 +1149,37 @@ class SerialReceiver:
         start_pos = "1.0"
         is_regex = self.filter_mode_var.get() == "regex"
         
-        while True:
-            start_pos = self.main_text.search(pattern, start_pos, stopindex=tk.END, regexp=is_regex)
-            if not start_pos:
-                break
-            
-            # 找到匹配，获取结束位置
-            # 对于正则，我们需要算出匹配长度。Tkinter search 对于正则不直接返回长度，
-            # 需要配合 -count 变量
-            count_var = tk.IntVar()
-            self.main_text.search(pattern, start_pos, stopindex=tk.END, regexp=is_regex, count=count_var)
-            match_len = count_var.get()
-            
-            end_pos = f"{start_pos}+{match_len}c"
-            self.main_text.tag_add("highlight", start_pos, end_pos)
-            start_pos = end_pos
+        try:
+            while True:
+                count_var = tk.IntVar()
+                start_pos = self.main_text.search(pattern, start_pos, stopindex=tk.END, regexp=is_regex, count=count_var)
+                if not start_pos:
+                    break
+                # Tk 的正则搜索不直接返回匹配长度，要靠 count 变量取得
+                match_len = count_var.get()
+                if match_len <= 0:
+                    start_pos = f"{start_pos}+1c"  # 空匹配：跳过一个字符，避免死循环
+                    continue
+                end_pos = f"{start_pos}+{match_len}c"
+                self.main_text.tag_add("highlight", start_pos, end_pos)
+                start_pos = end_pos
+        except tk.TclError:
+            pass  # 无效的正则：错误提示已由过滤逻辑显示，这里不再抛出
 
     def refresh_all_display(self):
         """刷新主显示区（时间戳/HEX切换时）"""
         self.main_text.delete("1.0", tk.END)
-        # 批量重新插入，并应用当前高亮
-        pattern = self.filter_entry.get().strip()
-        for line_text, timestamp, line_num, hex_str in self.all_lines:
-            self._insert_with_timestamp(self.main_text, line_text, timestamp, highlight_pattern=pattern, line_num=line_num, hex_str=hex_str)
-            
+        # 分批重新插入；高亮由随后的 on_filter_changed 统一刷新
+        for start in range(0, len(self.all_lines), self.REBUILD_CHUNK):
+            pairs = self._line_pairs(self.all_lines[start:start + self.REBUILD_CHUNK], None)
+            if pairs:
+                self.main_text.insert(tk.END, *pairs)
+
         if not self.paused_main:
             self.main_text.see(tk.END)
         # 同时刷新过滤区内容
         self.on_filter_changed()
-        
+
     def clear_display(self):
         """清空所有数据"""
         self._clear_main()
@@ -1254,20 +1238,23 @@ class SerialReceiver:
                 pass
             self.save_file_handle = None
     
-    def _write_line_to_file(self, line, timestamp):
-        """实时写一行到文件"""
-        if self.save_file_handle:
-            try:
-                if self.show_timestamp_var.get():
-                    self.save_file_handle.write(f"[{timestamp}] {line}")
-                else:
-                    self.save_file_handle.write(line)
-                self.save_file_handle.flush()
-            except Exception:
-                self._close_save_file()
-                self.file_menu.entryconfigure(0, label=tr("保存文件"))
-                self.file_menu.entryconfigure(1, state=tk.DISABLED)
-                self._set_status("保存文件写入失败", "red")
+    def _write_entries_to_file(self, entries):
+        """把本批新行一次性写入保存文件。"""
+        if not self.save_file_handle:
+            return
+        try:
+            if self.show_timestamp_var.get():
+                data = "".join(f"[{timestamp}] {line}" for line, timestamp, _n, _h in entries)
+            else:
+                data = "".join(entry[0] for entry in entries)
+            self.save_file_handle.write(data)
+            self.save_file_handle.flush()
+        except Exception:
+            self._close_save_file()
+            self.file_menu.entryconfigure(0, label=tr("保存文件"))
+            self.file_menu.entryconfigure(1, state=tk.DISABLED)
+            self._set_status("保存文件写入失败", "red")
+
     def _show_about(self):
         """显示关于对话框"""
         import webbrowser

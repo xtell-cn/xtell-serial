@@ -68,6 +68,7 @@ EN = {
     "实时保存到: {path}": "Saving live to: {path}",
     "已停止保存: {path}": "Stopped saving: {path}",
     "保存文件写入失败": "Writing to the save file failed",
+    "（数据突发：{n} 行未在此绘制，仍保存在缓冲区和文件中）": "(Data burst: {n} lines not drawn here; they are kept in the buffer and file)",
     "发送失败": "Send failed",
     # messages
     "请输入有效的波特率": "Please enter a valid baud rate",
