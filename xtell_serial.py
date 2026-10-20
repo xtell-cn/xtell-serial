@@ -203,6 +203,7 @@ class SerialReceiver:
         self.last_data_time = time.time()
         
         self.setup_ui()
+        self._fit_button_widths()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._setup_tray_icon()
         
@@ -682,7 +683,7 @@ class SerialReceiver:
     def _set_custom_name(self, event=None):
         from tkinter import simpledialog
         current = self.custom_name_var.get()
-        if current in ("[点击设置名称]", "[Click to set name]"):
+        if current in ("[点击设置名称]", "[Set name]"):
             current = ""
         new_name = simpledialog.askstring(tr("设置名称"), tr("请输入此窗口的自定义名称\n（用于区分多个串口助手实例）:"),
                                           initialvalue=current, parent=self.root)
@@ -711,6 +712,31 @@ class SerialReceiver:
         """Show a status line and remember it so it can be re-rendered on language change."""
         self._status = (template, color, kw)
         self.status_label.config(text=tr(template, **kw), foreground=color)
+
+    def _fit_button_widths(self):
+        """Fixed-width buttons were sized for Chinese; widen them in English so the text is not cut."""
+        if not hasattr(self, "_btn_widths"):
+            self._btn_widths = {}
+        english = i18n.get_lang() == "en"
+
+        def walk(w):
+            for c in w.winfo_children():
+                if isinstance(c, ttk.Button):
+                    try:
+                        orig = self._btn_widths.setdefault(str(c), int(c.cget("width") or 0))
+                    except (tk.TclError, ValueError):
+                        orig = 0
+                    if orig:
+                        if english:
+                            need = len(c.cget("text")) + 2
+                            if c is getattr(self, "repeat_btn", None):
+                                need = max(need, 14)   # "Start repeat" / "Stop repeat"
+                            c.configure(width=max(orig, need))
+                        else:
+                            c.configure(width=orig)
+                walk(c)
+
+        walk(self.root)
 
     def _toggle_language(self):
         i18n.set_lang("en" if i18n.get_lang() == "zh" else "zh")
@@ -747,6 +773,7 @@ class SerialReceiver:
                 relabel(child)
 
         relabel(self.root)
+        self._fit_button_widths()
         self.menubar.entryconfigure(self.menubar.index("end"), label=self._lang_menu_text())
         self.custom_name_var.set(conv(self.custom_name_var.get()))
         title = tr("极智调试串口")

@@ -30,7 +30,7 @@ EN = {
     "编码:": "Encoding:",
     "打开连接": "Open",
     "关闭连接": "Close",
-    "[点击设置名称]": "[Click to set name]",
+    "[点击设置名称]": "[Set name]",
     # option bar
     "行号": "Line No.",
     "时间戳": "Timestamp",
@@ -39,8 +39,8 @@ EN = {
     "  使用:": "  Used:",
     # receive / filter / send panes
     "接收数据": "Received Data",
-    "暂停滚动": "Pause scroll",
-    "继续滚动": "Resume scroll",
+    "暂停滚动": "Pause",
+    "继续滚动": "Resume",
     "清空接收": "Clear RX",
     "关键词:": "Keyword:",
     "字符串": "String",
